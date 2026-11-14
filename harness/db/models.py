@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     TIMESTAMP,
@@ -14,7 +15,9 @@ from sqlalchemy import (
     MetaData,
     Numeric,
     Text,
+    func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -39,6 +42,19 @@ ATTEMPT_TYPES = (
     "STACK",
 )
 _ATTEMPT_LIST = ", ".join(f"'{t}'" for t in ATTEMPT_TYPES)
+
+DETECTORS = (
+    "fan-out",
+    "fan-in",
+    "cycle",
+    "scatter-gather",
+    "gather-scatter",
+    "stack",
+    "bipartite",
+    "structuring",
+    "volume-spike",
+)
+_DETECTOR_LIST = ", ".join(f"'{d}'" for d in DETECTORS)
 
 
 class Base(DeclarativeBase):
@@ -101,3 +117,40 @@ class TransactionLabel(Base):
     is_laundering: Mapped[bool] = mapped_column(Boolean)
     attempt_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attempt_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Alert(Base):
+    """Derived data written by the rules layer. Holds no label information."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        CheckConstraint(f"detector IN ({_DETECTOR_LIST})", name="detector_valid"),
+        Index("ix_alerts_ruleset_detector", "ruleset_version", "detector"),
+    )
+
+    alert_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    ruleset_version: Mapped[str] = mapped_column(Text)
+    detector: Mapped[str] = mapped_column(Text)
+    anchor_bank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    anchor_acct: Mapped[str | None] = mapped_column(Text, nullable=True)
+    window_start: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=False))
+    window_end: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=False))
+    txn_count: Mapped[int] = mapped_column(Integer)
+    account_count: Mapped[int] = mapped_column(Integer)
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    summary: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
+
+
+class AlertTransaction(Base):
+    __tablename__ = "alert_transactions"
+
+    alert_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("alerts.alert_id", ondelete="CASCADE"), primary_key=True
+    )
+    txn_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("transactions.txn_id"), primary_key=True, autoincrement=False
+    )
+    role: Mapped[str] = mapped_column(Text)
