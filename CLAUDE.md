@@ -34,7 +34,7 @@ Milestones M0 to M6 are listed in docs/brief.md section 13. Current step: M0 set
 
 - Personal accounts and billing only. No client code, client data or work accounts.
 - All data is synthetic or public. Chinese model APIs only receive synthetic or public data.
-- Secrets only in Codespaces secrets and Render or Vercel env vars. Never commit secrets, keys or data files. The repo is public.
+- Secrets only in Codespaces secrets and Render or Vercel env vars. Never commit secrets, keys or data files. The repo is public. One exception: small synthetic slices under 10 MB listed in data/README.md (see docs/decisions/0003).
 - Development happens only in GitHub Codespaces. Heavy data work happens in Kaggle Notebooks.
 
 ## Conventions

@@ -14,5 +14,7 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=500]
+        # The one small synthetic slice allowed by docs/decisions/0003.
+        exclude: ^data/aml_slice_hi_small\.csv$
       - id: end-of-file-fixer
       - id: trailing-whitespace

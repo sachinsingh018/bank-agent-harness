@@ -5,13 +5,19 @@
 *.pem
 *.key
 
-# Data files (only scripts live in /data)
+# Data files. Only scripts and the small committed slice live in /data.
 data/*
 !data/README.md
 !data/.gitkeep
 *.csv
 *.parquet
 *.duckdb
+# Full IBM files must never be committed
+data/raw/
+data/**/*Trans.csv
+data/**/*Patterns.txt
+# The one small synthetic slice that is tracked (under 10 MB)
+!data/aml_slice_hi_small.csv
 
 # Python
 __pycache__/
