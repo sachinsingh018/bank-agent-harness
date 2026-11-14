@@ -11,6 +11,9 @@ if [ -d "$BACKUP" ] && [ ! -d /home/vscode/.claude/projects ]; then
   echo "Restored Claude Code history from $BACKUP"
 fi
 
+# Git LFS hooks are installed in this repo, so the binary must exist.
+sudo apt-get update -qq && sudo apt-get install -y -qq git-lfs
+
 pip install --user uv pre-commit
 uv sync
 pre-commit install
