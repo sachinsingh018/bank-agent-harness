@@ -30,3 +30,6 @@ Update this file at the end of each working session. Do not track setup status h
 
 ## Next piece of work
 M2, the agent harness. First piece: the read-only MCP tools the agent uses to investigate an alert (get_alert, get_account_history, get_counterparties and a few more). Tools read only transactions, accounts, alerts and alert_transactions, never the labels table. A plan goes in `docs/plans/mcp-tools.md` and needs owner approval before any code. Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
+
+## Future hardening (deferred)
+- Give the MCP tools their own read-only Postgres role that can select only from transactions, accounts, alerts and alert_transactions. It would make the labels guard hold at the database level too. It needs a new connection string, so it is deferred. Until then the guard is code, a runtime SQL check and tests (docs/plans/mcp-tools.md).
