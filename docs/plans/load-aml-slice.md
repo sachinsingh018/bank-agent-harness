@@ -34,7 +34,7 @@ Why separate: `laundering`, `attempt_id` and `attempt_type` are the answer key f
 | to_bank, to_acct | integer, text | Foreign key to accounts. |
 | amt_recv, amt_paid | numeric | Never float, because this is money. Check the file for the most decimal places before fixing the scale. |
 | cur_recv, cur_paid, fmt | text | |
-| row_hash | text, unique | SHA-256 of the 11 source columns. Used for rerun safety. |
+| row_hash | text, unique | SHA-256 of the 10 non-label source columns. Used for rerun safety. The label is left out on purpose, so the hash cannot be used to guess the answer key. |
 
 Indexes: sender account, receiver account, `ts`. The rules layer will need per-account history.
 
@@ -67,7 +67,7 @@ Steps:
 
 1. Validate first, before connecting. Parse and check the whole CSV: 13 columns, no missing required fields, valid numbers and timestamps, no duplicate `row_hash` values, and the label rules hold. Any failure stops the run. Nothing is silently dropped.
 2. Load in one transaction, all or nothing. Insert accounts, then transactions, then labels, in batches of about 1,000 with `INSERT ... ON CONFLICT DO NOTHING`. A crash halfway leaves no partial data.
-3. Rerun safety. Read the existing `txn_id` and `row_hash` pairs. If a `txn_id` exists with a different hash, the file has changed since the last load, so stop and refuse to mix versions. Otherwise a second run inserts 0 rows.
+3. Rerun safety. Read the existing `txn_id` and `row_hash` pairs. If a `txn_id` exists with a different hash, the file has changed since the last load, so stop and refuse to mix versions. Otherwise a second run inserts 0 rows. The hash leaves out the label, so a change to a label alone is not caught here. `verify` catches it by comparing the database with the CSV.
 4. `--dry-run` does step 1 only, with no connection at all.
 5. Neon free pauses idle databases, so the first connection can be slow. Retry the connect a few times.
 

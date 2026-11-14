@@ -30,4 +30,4 @@ python_version = "3.12"
 strict = true
 
 [tool.pytest.ini_options]
-testpaths = ["apps", "harness", "tools", "modules", "evals"]
+testpaths = ["apps", "harness", "tools", "modules", "evals", "data"]

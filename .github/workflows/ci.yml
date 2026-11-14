@@ -19,7 +19,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy apps harness migrations
+      - run: uv run mypy apps harness migrations data
       - run: uv run pytest
 
   web:
