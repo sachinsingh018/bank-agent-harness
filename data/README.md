@@ -16,13 +16,14 @@ A small slice of the IBM AML dataset, used for the Monitor (AML alert investigat
 
 ### How the slice was made
 
-Built in a Kaggle notebook (heavy data work stays out of Codespaces) from the HI-Small transactions file and its laundering patterns file. The slice has three parts:
+Built in a Kaggle notebook (heavy data work stays out of Codespaces) from the HI-Small transactions file and its laundering patterns file, using a fixed random seed of 42. The steps were:
 
-1. Whole laundering schemes: up to 8 complete schemes for each of the 8 scheme families (BIPARTITE, CYCLE, FAN-IN, FAN-OUT, GATHER-SCATTER, RANDOM, SCATTER-GATHER, STACK). "Whole" means every transfer in a chosen scheme is kept, so no pattern is cut in half. Every family reached the limit of 8, giving 64 schemes.
-2. Normal transfers on the same accounts: the other transfers made by the accounts that appear in those schemes, so the laundering looks like it does in real traffic.
-3. Random normal transfers: extra unrelated normal transfers, so the slice has a realistic share of normal activity.
+1. Whole laundering schemes: pick up to 8 complete schemes for each of the 8 scheme families (BIPARTITE, CYCLE, FAN-IN, FAN-OUT, GATHER-SCATTER, RANDOM, SCATTER-GATHER, STACK). "Whole" means every transfer in a chosen scheme is kept, so no pattern is cut in half. Every family reached the limit of 8, giving 64 schemes.
+2. Normal transfers on the same accounts: add up to 15,000 normal transfers that touch the accounts in those schemes, so the laundering sits inside realistic account activity.
+3. Random normal transfers: add 10,000 random normal transfers, so the slice has a realistic share of unrelated normal activity.
+4. Remove duplicate rows.
 
-The notebook's random seed is not recorded here yet. TODO: add the seed and the notebook link so the slice can be reproduced.
+The result is 25,493 rows, of which 522 are laundering.
 
 ### Columns
 
@@ -51,4 +52,4 @@ Notes:
 
 ### Reproducing
 
-Slicing logic and the random seed go here once recorded (see the TODO above).
+Open the IBM AML dataset on Kaggle, create a notebook with the dataset attached, use the HI-Small files only, and rerun the steps above with seed 42.
