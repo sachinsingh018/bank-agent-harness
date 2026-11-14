@@ -5,7 +5,7 @@ from pathlib import Path
 
 AML = Path(__file__).parent
 RULE_FILES = sorted((AML / "rules").glob("*.py"))
-SCANNED = [*RULE_FILES, AML / "load_txns.py"]
+SCANNED = [*RULE_FILES, AML / "load_txns.py", AML / "run_rules.py"]
 FORBIDDEN_WORDS = ("TransactionLabel", "transaction_labels")
 
 
@@ -23,6 +23,10 @@ def _import_names(tree: ast.AST) -> list[str]:
 def test_files_are_found() -> None:
     assert len(RULE_FILES) >= 4
     assert (AML / "load_txns.py").exists()
+    assert (AML / "run_rules.py").exists()
+    names = {p.name for p in RULE_FILES}
+    for expected in ("cycle.py", "scatter_gather.py", "gather_scatter.py", "registry.py"):
+        assert expected in names
 
 
 def test_no_label_mentions_as_text() -> None:
