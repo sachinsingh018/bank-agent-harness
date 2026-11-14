@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: bank-agent-harness-api
+    runtime: python
+    plan: free
+    # Runs from the repo root so the import path apps.api.main works.
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --frozen --no-dev uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11
+      - key: DATABASE_URL
+        sync: false
