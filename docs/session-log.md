@@ -23,7 +23,7 @@ Update this file at the end of each working session. Do not track setup status h
 - Database tests run only against a local Postgres through `TEST_DATABASE_URL` and skip otherwise. They never read `DATABASE_URL`. CI starts a throwaway Postgres for them.
 - Anything run against Neon goes through a redaction filter first, and loader and rules scripts print only "local database" or "remote database".
 - Reviewer passes caught real bugs (scatter-gather counted payments before receipt, misleading per-family numbers). Keep the reviewer step.
-- CI actions (checkout@v4, setup-uv@v6, setup-node@v4) warn about Node 20 deprecation. Bump to newer majors in a small commit.
+- CI actions are on checkout v7, setup-node v7 and setup-uv v10.3.3 (Node 24). setup-uv publishes no floating major tag, so it is pinned to an exact version and needs a manual bump.
 - `ubuntu-latest` is moving to Ubuntu 26. Pin `ubuntu-24.04` if CI should not change under us.
 - TypeScript is held at 5.9.3 because eslint-config-next rejects TS 7. Revisit later.
 - The pre-commit large-file hook (500 KB) exempts only `data/aml_slice_hi_small.csv` (decisions/0003).
