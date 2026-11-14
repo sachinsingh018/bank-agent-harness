@@ -465,9 +465,9 @@ def _check_agreement(conn: Connection, draft: AlertDraft) -> None:
         result = run_pattern_check(conn, inp)
     except ToolFailure as failure:
         assert failure.code == "too_large"
-        assert (
-            (draft.detector, draft.txn_ids) in EXPECTED_TOO_LARGE
-        ), f"unexpected too_large for {draft.detector} alert on {draft.anchor}"
+        assert (draft.detector, draft.txn_ids) in EXPECTED_TOO_LARGE, (
+            f"unexpected too_large for {draft.detector} alert on {draft.anchor}"
+        )
         return
     assert (draft.detector, draft.txn_ids) not in EXPECTED_TOO_LARGE, "listed case now works"
     expected = list(draft.txn_ids)
@@ -513,9 +513,9 @@ def test_pattern_check_agrees_with_the_fixture_alerts(
     without_alerts = [d for d in DETECTOR_ORDER if d not in by_detector]
     assert set(without_alerts) <= hand_built, f"detectors with no coverage: {without_alerts}"
     assert set(by_detector) <= set(DETECTOR_ORDER)
-    assert sorted(by_detector) == sorted(
-        d for d in DETECTOR_ORDER if d not in without_alerts
-    ), f"detectors with fixture alerts: {sorted(by_detector)}"
+    assert sorted(by_detector) == sorted(d for d in DETECTOR_ORDER if d not in without_alerts), (
+        f"detectors with fixture alerts: {sorted(by_detector)}"
+    )
     checked: Counter[str] = Counter()
     with open_readonly(tool_engine) as conn:
         for detector in DETECTOR_ORDER:
