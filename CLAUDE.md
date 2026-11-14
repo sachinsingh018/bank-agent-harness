@@ -16,7 +16,7 @@ The owner knows Python, FastAPI, Next.js, TypeScript, Postgres, Docker, GitHub A
 Three modules share one harness, one case UI and one eval runner. Build strictly in order, each complete and evaluated before the next:
 1. Monitor (AML alert investigation), 2. Onboard (KYB), 3. Lend (credit memo).
 A bank reconciliation agent is parked. Do not start it.
-Milestones M0 to M6 are listed in docs/brief.md section 13. Current step: M0 setup.
+Milestones M0 to M6 are listed in docs/brief.md section 13. Current step: M0 setup (hosting and secrets left, see docs/session-log.md).
 
 ## Hard rules
 
@@ -55,6 +55,7 @@ Typical loop: builder, then tester, then reviewer, then commit.
 
 ## Pointers
 
+- docs/session-log.md: current state and next steps. Read first in a new chat, update at session end
 - docs/brief.md: full brief (scope, architecture, harness design, evals, data sources, stack, hosting, milestones, decisions, open questions)
 - docs/glossary.md: finance terms
 - docs/decisions/: decision notes
