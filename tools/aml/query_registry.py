@@ -4,11 +4,11 @@ fails if a public query function is missing from it."""
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, get_args
 
 from pydantic import BaseModel
 
-from tools.aml import queries
+from tools.aml import detector_docs, patterns, queries
 from tools.aml.models import (
     AccountHistoryInput,
     AccountInput,
@@ -16,6 +16,10 @@ from tools.aml.models import (
     AlertIdInput,
     AlertTransactionsInput,
     CounterpartiesInput,
+    DescribeDetectorInput,
+    GraphInput,
+    PatternCheckInput,
+    PatternName,
     TransactionInput,
 )
 
@@ -34,8 +38,13 @@ class Samples:
 @dataclass(frozen=True)
 class QueryEntry:
     name: str
-    func: Callable[[Any, Any], BaseModel]
+    func: Callable[..., BaseModel]
     build_args: Callable[[Samples], list[BaseModel]]
+    # describe_detector needs no database, so it takes only its input.
+    needs_connection: bool = True
+
+    def call(self, conn: Any, args: BaseModel) -> BaseModel:
+        return self.func(conn, args) if self.needs_connection else self.func(args)
 
 
 def _alert_args(s: Samples) -> list[BaseModel]:
@@ -74,6 +83,26 @@ def _counterparty_args(s: Samples) -> list[BaseModel]:
     ]
 
 
+def _graph_args(s: Samples) -> list[BaseModel]:
+    a = s.account
+    return [
+        GraphInput(bank=a.bank, acct=a.acct),
+        GraphInput(bank=a.bank, acct=a.acct, hops=2, start=s.start, end=s.end),
+    ]
+
+
+def _pattern_args(s: Samples) -> list[BaseModel]:
+    a = s.account
+    return [
+        PatternCheckInput(pattern=p, bank=a.bank, acct=a.acct, start=s.start, end=s.end)
+        for p in get_args(PatternName)
+    ]
+
+
+def _detector_args(s: Samples) -> list[BaseModel]:
+    return [DescribeDetectorInput(detector=d) for d in get_args(PatternName)]
+
+
 QUERY_REGISTRY: tuple[QueryEntry, ...] = (
     QueryEntry("get_alert", queries.get_alert, _alert_args),
     QueryEntry("get_alert_transactions", queries.get_alert_transactions, _alert_txn_args),
@@ -81,4 +110,9 @@ QUERY_REGISTRY: tuple[QueryEntry, ...] = (
     QueryEntry("get_account", queries.get_account, _account_args),
     QueryEntry("get_account_history", queries.get_account_history, _history_args),
     QueryEntry("get_counterparties", queries.get_counterparties, _counterparty_args),
+    QueryEntry("get_transaction_graph", queries.get_transaction_graph, _graph_args),
+    QueryEntry("run_pattern_check", patterns.run_pattern_check, _pattern_args),
+    QueryEntry(
+        "describe_detector", detector_docs.describe_detector, _detector_args, needs_connection=False
+    ),
 )

@@ -25,7 +25,13 @@ from sqlalchemy import (
 )
 
 from harness.db.models import Account, Alert, AlertTransaction, Transaction
-from tools.aml.caps import DEFAULT_ROWS, MAX_COUNTERPARTIES
+from tools.aml.caps import (
+    DEFAULT_ROWS,
+    GRAPH_EXPANSION_FANOUT,
+    MAX_COUNTERPARTIES,
+    MAX_GRAPH_EDGES,
+    MAX_GRAPH_NODES,
+)
 from tools.aml.models import (
     AccountHistoryInput,
     AccountInput,
@@ -40,6 +46,9 @@ from tools.aml.models import (
     CounterpartiesInput,
     CounterpartiesResult,
     CounterpartyRecord,
+    GraphInput,
+    GraphNode,
+    GraphResult,
     Money,
     TransactionInput,
     TransferPage,
@@ -420,3 +429,138 @@ def get_counterparties(conn: Connection, inp: CounterpartiesInput) -> Counterpar
         returned=len(kept),
         truncated=len(kept) < len(keys),
     )
+
+
+# ------------------------------------------------------------------ transaction graph
+
+
+def _not_self() -> ColumnElement[bool]:
+    """Excludes transfers where an account paid itself."""
+    return or_(
+        Transaction.from_bank != Transaction.to_bank,
+        Transaction.from_acct != Transaction.to_acct,
+    )
+
+
+def _links(
+    conn: Connection,
+    seeds: Sequence[AccountKey],
+    window: list[ColumnElement[bool]],
+) -> dict[AccountKey, int]:
+    """Accounts that exchanged transfers with any seed account, with the number of transfers.
+    Self transfers are left out. Two queries, one per direction."""
+    linked: dict[AccountKey, int] = defaultdict(int)
+    sender = tuple_(Transaction.from_bank, Transaction.from_acct).in_(list(seeds))
+    receiver = tuple_(Transaction.to_bank, Transaction.to_acct).in_(list(seeds))
+    out_rows = conn.execute(
+        select(Transaction.to_bank, Transaction.to_acct, func.count().label("n"))
+        .where(sender, _not_self(), *window)
+        .group_by(Transaction.to_bank, Transaction.to_acct)
+    ).all()
+    in_rows = conn.execute(
+        select(Transaction.from_bank, Transaction.from_acct, func.count().label("n"))
+        .where(receiver, _not_self(), *window)
+        .group_by(Transaction.from_bank, Transaction.from_acct)
+    ).all()
+    for r in (*out_rows, *in_rows):
+        linked[(r[0], r[1])] += r.n
+    return linked
+
+
+def _node_counts(
+    conn: Connection,
+    keys: Sequence[AccountKey],
+    window: list[ColumnElement[bool]],
+) -> tuple[dict[AccountKey, int], dict[AccountKey, int]]:
+    """Transfers in and out of each account in the window, self transfers left out."""
+    in_rows = conn.execute(
+        select(Transaction.to_bank, Transaction.to_acct, func.count().label("n"))
+        .where(tuple_(Transaction.to_bank, Transaction.to_acct).in_(list(keys)), _not_self())
+        .where(*window)
+        .group_by(Transaction.to_bank, Transaction.to_acct)
+    ).all()
+    out_rows = conn.execute(
+        select(Transaction.from_bank, Transaction.from_acct, func.count().label("n"))
+        .where(tuple_(Transaction.from_bank, Transaction.from_acct).in_(list(keys)), _not_self())
+        .where(*window)
+        .group_by(Transaction.from_bank, Transaction.from_acct)
+    ).all()
+    return ({(r[0], r[1]): r.n for r in in_rows}, {(r[0], r[1]): r.n for r in out_rows})
+
+
+def get_transaction_graph(conn: Connection, inp: GraphInput) -> GraphResult:
+    """The neighbourhood of an account, capped.
+
+    Hop 1 is every account that exchanged transfers with the root. Hop 2 grows only from the
+    busiest few hop 1 accounts. Accounts are kept hop 1 first, then hop 2, each ranked by
+    transfer count and then account, up to MAX_GRAPH_NODES including the root. Edges are the
+    individual transfers between kept accounts, oldest first, up to MAX_GRAPH_EDGES, and
+    total_edges_found counts all of them. truncated is true if anything was cut, including hop 1
+    accounts that were not expanded when hops is 2."""
+    root: AccountKey = (inp.bank, inp.acct)
+    _require_account(conn, *root)
+    window = _window(inp.start, inp.end)
+
+    hop1 = _links(conn, [root], window)
+    hop1.pop(root, None)
+    ranked1 = sorted(hop1, key=lambda k: (-hop1[k], k))
+    kept1 = ranked1[: MAX_GRAPH_NODES - 1]
+    found: set[AccountKey] = {root, *hop1}
+
+    kept2: list[AccountKey] = []
+    unexpanded = False
+    if inp.hops >= 2 and ranked1:
+        seeds = ranked1[:GRAPH_EXPANSION_FANOUT]
+        unexpanded = len(ranked1) > len(seeds)
+        hop2 = _links(conn, seeds, window)
+        for key in found:
+            hop2.pop(key, None)
+        found |= set(hop2)
+        ranked2 = sorted(hop2, key=lambda k: (-hop2[k], k))
+        kept2 = ranked2[: max(0, MAX_GRAPH_NODES - 1 - len(kept1))]
+
+    kept = [root, *kept1, *kept2]
+    n_in, n_out = _node_counts(conn, kept, window)
+    nodes = [
+        GraphNode(
+            account=AccountRef(bank=k[0], acct=k[1]),
+            transfers_in=n_in.get(k, 0),
+            transfers_out=n_out.get(k, 0),
+        )
+        for k in kept
+    ]
+
+    between = [
+        tuple_(Transaction.from_bank, Transaction.from_acct).in_(kept),
+        tuple_(Transaction.to_bank, Transaction.to_acct).in_(kept),
+        _not_self(),
+        *window,
+    ]
+    total_edges = conn.execute(
+        select(func.count()).select_from(Transaction).where(*between)
+    ).scalar_one()
+    rows = conn.execute(
+        _transfer_select()
+        .where(*between)
+        .order_by(Transaction.ts, Transaction.txn_id)
+        .limit(MAX_GRAPH_EDGES)
+    ).all()
+    edges = [_record(r) for r in rows]
+    root_ref = AccountRef(bank=inp.bank, acct=inp.acct)
+    nodes_cut = len(found) > len(kept)
+
+    def build(items: list[TransferRecord], cut: bool) -> GraphResult:
+        return GraphResult(
+            root=root_ref,
+            hops=inp.hops,
+            nodes=nodes,
+            edges=items,
+            total_nodes_found=len(found),
+            total_edges_found=total_edges,
+            truncated=cut,
+            window_start=inp.start,
+            window_end=inp.end,
+        )
+
+    shown = fit_items(edges, lambda items: json_size(build(items, True)))
+    return build(shown, nodes_cut or unexpanded or len(shown) < total_edges)

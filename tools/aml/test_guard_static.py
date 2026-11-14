@@ -67,6 +67,7 @@ def _tool_files() -> list[Path]:
 def test_files_are_found() -> None:
     names = {p.name for p in _tool_files()}
     assert {"db.py", "queries.py", "models.py", "caps.py", "paging.py"} <= names
+    assert {"patterns.py", "detector_docs.py"} <= names
 
 
 def _checked_for_labels() -> list[Path]:
@@ -234,6 +235,16 @@ PER_FILE_FROM_IMPORTS: dict[str, dict[str, set[str]]] = {
         "sqlalchemy.sql.visitors": {"iterate"},
         "harness.db.session": {"DatabaseConnectionError", "get_database_url"},
     },
+    # The ONE file that may use the rules layer: the pure detectors, never the loader, the
+    # store or the runner. run_pattern_check converts rows to Txn and runs one detector.
+    "aml/patterns.py": {
+        "modules.aml.rules.types": {"AlertDraft", "Txn"},
+        "modules.aml.rules.ruleset": {"RULESET_VERSION", "V1", "RulesetConfig"},
+        "modules.aml.rules.fan": {"fan_in", "fan_out"},
+        "modules.aml.rules.cycle": {"cycle"},
+        "modules.aml.rules.scatter_gather": {"scatter_gather"},
+        "modules.aml.rules.gather_scatter": {"gather_scatter"},
+    },
 }
 
 
@@ -270,6 +281,61 @@ def test_imports_are_on_the_allowlist() -> None:
         rel = path.relative_to(TOOLS).as_posix()
         found = import_violations(path.read_text(encoding="utf-8"), rel)
         assert not found, f"{rel}: {found}"
+
+
+def test_only_patterns_py_may_import_the_rules() -> None:
+    owners = [
+        rel
+        for rel, mods in PER_FILE_FROM_IMPORTS.items()
+        if any(m.startswith("modules") for m in mods)
+    ]
+    assert owners == ["aml/patterns.py"]
+    for path in _tool_files():
+        rel = path.relative_to(TOOLS).as_posix()
+        text = path.read_text(encoding="utf-8")
+        if rel != "aml/patterns.py":
+            assert "modules." not in text, rel
+    for mod in PER_FILE_FROM_IMPORTS["aml/patterns.py"]:
+        assert mod.startswith("modules.aml.rules.")
+
+
+RULES_IMPORT = (
+    "from modules.aml.rules.fan import fan_out\nfrom modules.aml.rules.types import Txn\n"
+)
+
+
+@pytest.mark.parametrize(
+    "rel", ["aml/queries.py", "aml/db.py", "aml/detector_docs.py", "aml/models.py"]
+)
+def test_other_files_may_not_import_the_rules(rel: str) -> None:
+    assert import_violations(RULES_IMPORT, rel)
+    assert import_violations("from modules.aml.rules.ruleset import V1", rel)
+
+
+def test_patterns_py_may_import_the_detectors() -> None:
+    assert not import_violations(RULES_IMPORT, "aml/patterns.py")
+    assert not import_violations("from modules.aml.rules.ruleset import V1", "aml/patterns.py")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from modules.aml.load_txns import load_txns",
+        "from modules.aml.store import write_alerts",
+        "from modules.aml.run_rules import main",
+        "from modules.aml import store",
+        "from modules.aml.rules import registry",
+        "from modules.aml.rules.registry import run_all",
+        "from modules.aml.rules.ids import make_alert_id",
+        "from modules.aml.rules.fan import _fan",
+        "from modules.aml.rules.types import Account",
+        "import modules.aml.rules.fan",
+        "import modules.aml.store",
+        "from modules import aml",
+    ],
+)
+def test_patterns_py_still_refuses_everything_else_in_modules(source: str) -> None:
+    assert import_violations(source, "aml/patterns.py")
 
 
 def test_per_file_import_allowlist_names_only_existing_files() -> None:

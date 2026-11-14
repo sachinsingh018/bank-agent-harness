@@ -10,6 +10,7 @@ from modules.aml.rules.ids import make_alert_id
 from modules.aml.store import write_alerts_on
 from tools.aml.conftest import ToolData
 from tools.aml.db import install_guard
+from tools.aml.paging import ToolFailure
 from tools.aml.query_registry import QUERY_REGISTRY, Samples
 
 INV_VERSION = "test-tools-inv"
@@ -48,7 +49,12 @@ def test_outputs_do_not_change_when_labels_are_emptied(
                 outputs: list[object] = []
                 for entry in QUERY_REGISTRY:
                     for args in entry.build_args(samples):
-                        outputs.append(entry.func(conn, args).model_dump(mode="json"))
+                        try:
+                            outputs.append(entry.call(conn, args).model_dump(mode="json"))
+                        except ToolFailure as failure:
+                            # An over-cap neighbourhood must give the same failure both times.
+                            assert failure.code == "too_large", entry.name
+                            outputs.append({"failure": failure.code, "message": failure.message})
                 return outputs
 
             before = run_all_queries()

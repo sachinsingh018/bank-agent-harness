@@ -6,7 +6,14 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from tools.aml.caps import DEFAULT_ROWS, MAX_ROWS
+from tools.aml.caps import (
+    DEFAULT_GRAPH_HOPS,
+    DEFAULT_ROWS,
+    MAX_GRAPH_HOPS,
+    MAX_MATCH_TXN_IDS,
+    MAX_PATTERN_MATCHES,
+    MAX_ROWS,
+)
 
 # ---------------------------------------------------------------- outputs
 
@@ -108,6 +115,60 @@ class CounterpartiesResult(BaseModel):
     truncated: bool
 
 
+class GraphNode(BaseModel):
+    """An account in the neighbourhood. The counts cover all of its transfers with other
+    accounts in the window, not only the ones drawn as edges."""
+
+    account: AccountRef
+    transfers_in: int
+    transfers_out: int
+
+
+class GraphResult(BaseModel):
+    """Accounts as nodes and transfers between kept accounts as edges. The totals count
+    everything found, so a cut result is never silent."""
+
+    root: AccountRef
+    hops: int
+    nodes: list[GraphNode]
+    edges: list[TransferRecord]
+    total_nodes_found: int
+    total_edges_found: int
+    truncated: bool
+    window_start: datetime | None
+    window_end: datetime | None
+
+
+class PatternMatch(BaseModel):
+    detector: str
+    anchor: AccountRef | None
+    window_start: datetime
+    window_end: datetime
+    txn_ids: Annotated[list[int], Field(max_length=MAX_MATCH_TXN_IDS)]
+    txn_count: int
+    summary: str
+    params: dict[str, Any]
+
+
+class PatternCheckResult(BaseModel):
+    pattern: str
+    account: AccountRef
+    transfers_examined: int
+    neighbourhood_hops: int
+    matches: Annotated[list[PatternMatch], Field(max_length=MAX_PATTERN_MATCHES)]
+    total_matches: int
+    truncated: bool
+    note: str
+
+
+class DetectorInfo(BaseModel):
+    detector: str
+    meaning: str
+    thresholds: dict[str, int]
+    roles: dict[str, str]
+    notes: str
+
+
 ErrorCode = Literal["not_found", "invalid_argument", "too_large", "internal"]
 
 
@@ -125,6 +186,9 @@ TxnId = Annotated[int, Field(ge=1, strict=True)]
 Limit = Annotated[int, Field(ge=1, le=MAX_ROWS, strict=True)]
 Cursor = Annotated[str, Field(min_length=1, max_length=200)]
 Direction = Literal["in", "out", "both"]
+Hops = Annotated[int, Field(ge=1, le=MAX_GRAPH_HOPS, strict=True)]
+PatternName = Literal["fan-out", "fan-in", "cycle", "scatter-gather", "gather-scatter"]
+DetectorName = Annotated[str, Field(min_length=1, max_length=40)]
 
 
 class _Input(BaseModel):
@@ -180,3 +244,19 @@ class CounterpartiesInput(_WindowInput):
     bank: Bank
     acct: Acct
     direction: Direction = "both"
+
+
+class GraphInput(_WindowInput):
+    bank: Bank
+    acct: Acct
+    hops: Hops = DEFAULT_GRAPH_HOPS
+
+
+class PatternCheckInput(_WindowInput):
+    pattern: PatternName
+    bank: Bank
+    acct: Acct
+
+
+class DescribeDetectorInput(_Input):
+    detector: DetectorName

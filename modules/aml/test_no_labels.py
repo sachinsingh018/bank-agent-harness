@@ -13,6 +13,14 @@ FORBIDDEN_WORDS = ("TransactionLabel", "transaction_labels")
 LABEL_EXEMPT = AML.parent.parent / "tools" / "aml" / "db.py"
 
 
+PATTERNS = AML.parent.parent / "tools" / "aml" / "patterns.py"
+RULES_PREFIX = "modules.aml.rules"
+RULES_REFUSED = (
+    "modules.aml.rules.registry",
+    "modules.aml.rules.ids",
+)
+
+
 def _import_names(tree: ast.AST) -> list[str]:
     names: list[str] = []
     for node in ast.walk(tree):
@@ -144,6 +152,34 @@ def test_tools_code_other_than_the_door_cannot_open_connections_or_import_writer
             continue
         checked += 1
         for name in _import_names(ast.parse(path.read_text(encoding="utf-8"))):
+            if path == PATTERNS and name.startswith(RULES_PREFIX):
+                # The one narrow exception: the pure detectors, never the loader or the store.
+                assert not name.startswith(RULES_REFUSED), f"{path} imports {name}"
+                continue
             assert not name.startswith(banned_prefixes), f"{path} imports {name}"
             assert name not in ("sqlalchemy.create_engine", "sqlalchemy.event"), f"{path} {name}"
     assert checked > 4
+
+
+def test_only_patterns_py_imports_modules_in_tools() -> None:
+    root = AML.parent.parent / "tools"
+    importers = []
+    for path in sorted(root.rglob("*.py")):
+        if ".venv" in path.parts or path.name.startswith("test_") or path.name == "conftest.py":
+            continue
+        names = _import_names(ast.parse(path.read_text(encoding="utf-8")))
+        if any(n == "modules" or n.startswith("modules.") for n in names):
+            importers.append(path)
+            for name in names:
+                if name.startswith("modules"):
+                    assert name.startswith(RULES_PREFIX), f"{path} imports {name}"
+                    for loader in ("load_txns", "store", "run_rules"):
+                        assert f"modules.aml.{loader}" not in name, f"{path} imports {name}"
+    assert importers == [PATTERNS]
+
+
+def test_rules_import_nothing_from_tools_or_the_apps() -> None:
+    for path in RULE_FILES:
+        for name in _import_names(ast.parse(path.read_text(encoding="utf-8"))):
+            assert not name.startswith("tools"), f"{path.name} imports {name}"
+            assert not name.startswith("apps"), f"{path.name} imports {name}"

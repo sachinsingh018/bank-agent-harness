@@ -19,7 +19,11 @@ def _counted(
 
 
 def gather_scatter(txns: Sequence[Txn], config: RulesetConfig = V1) -> list[AlertDraft]:
-    """A hub receives from 3 or more accounts and pays 3 or more others, payouts after pay-ins."""
+    """A hub receives from 3 or more accounts and pays 3 or more others, within the window.
+
+    Only payouts made at or after the first pay-in count. A payout may still come before some of
+    the later pay-ins, they are not required to follow every pay-in.
+    """
     min_in = config.gather_scatter_min_in
     min_out = config.gather_scatter_min_out
     window_hours = config.gather_scatter_window_hours

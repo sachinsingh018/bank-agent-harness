@@ -62,7 +62,7 @@ def test_every_query_runs_and_is_safe(tool_engine: Engine, tool_data: ToolData) 
     with open_readonly(tool_engine) as conn:
         for entry in QUERY_REGISTRY:
             for args in entry.build_args(tool_data.samples):
-                result = entry.func(conn, args)
+                result = entry.call(conn, args)
                 dumped = result.model_dump(mode="json")
                 calls += 1
                 assert not FORBIDDEN_KEYS & _keys(dumped), entry.name
