@@ -1,0 +1,896 @@
+{
+  "alert_counts": {
+    "cycle": 13,
+    "fan-in": 22,
+    "fan-out": 66,
+    "gather-scatter": 64,
+    "scatter-gather": 6
+  },
+  "alert_set_hash": "02b18317a44dd642e45c1405c89ac47264381023e64c5c16c871afbcee468724",
+  "alert_total": 171,
+  "dataset": {
+    "detectable_schemes": 52,
+    "laundering_transfers": 522,
+    "schemes": 64,
+    "transactions": 25493
+  },
+  "metrics": {
+    "overall": {
+      "alerts": {
+        "false_loose": 40,
+        "false_strict": 132,
+        "precision_loose": 0.766082,
+        "precision_strict": 0.22807,
+        "raised": 171,
+        "true_loose": 131,
+        "true_strict": 39
+      },
+      "false_alerts_per_caught_scheme": 3.142857,
+      "recall": {
+        "all": {
+          "caught": 42,
+          "laundering_transfers": 522,
+          "laundering_transfers_in_alerts": 406,
+          "scheme_recall_caught": 0.65625,
+          "scheme_recall_touched": 0.890625,
+          "schemes": 64,
+          "touched": 57,
+          "transfer_recall": 0.777778
+        },
+        "detectable": {
+          "caught": 33,
+          "laundering_transfers": 510,
+          "laundering_transfers_in_alerts": 397,
+          "scheme_recall_caught": 0.634615,
+          "scheme_recall_touched": 0.923077,
+          "schemes": 52,
+          "touched": 48,
+          "transfer_recall": 0.778431
+        },
+        "development": {
+          "caught": 18,
+          "laundering_transfers": 292,
+          "laundering_transfers_in_alerts": 212,
+          "scheme_recall_caught": 0.5625,
+          "scheme_recall_touched": 0.90625,
+          "schemes": 32,
+          "touched": 29,
+          "transfer_recall": 0.726027
+        },
+        "held_out": {
+          "caught": 24,
+          "laundering_transfers": 230,
+          "laundering_transfers_in_alerts": 194,
+          "scheme_recall_caught": 0.75,
+          "scheme_recall_touched": 0.875,
+          "schemes": 32,
+          "touched": 28,
+          "transfer_recall": 0.843478
+        },
+        "held_out_detectable": {
+          "caught": 19,
+          "laundering_transfers": 224,
+          "laundering_transfers_in_alerts": 189,
+          "scheme_recall_caught": 0.730769,
+          "scheme_recall_touched": 0.884615,
+          "schemes": 26,
+          "touched": 23,
+          "transfer_recall": 0.84375
+        }
+      }
+    },
+    "per_detector": {
+      "cycle": {
+        "alerts": {
+          "false_loose": 2,
+          "false_strict": 5,
+          "precision_loose": 0.846154,
+          "precision_strict": 0.615385,
+          "raised": 13,
+          "true_loose": 11,
+          "true_strict": 8
+        },
+        "false_alerts_per_caught_scheme": 0.294118,
+        "recall": {
+          "all": {
+            "caught": 17,
+            "laundering_transfers": 522,
+            "laundering_transfers_in_alerts": 33,
+            "scheme_recall_caught": 0.265625,
+            "scheme_recall_touched": 0.296875,
+            "schemes": 64,
+            "touched": 19,
+            "transfer_recall": 0.063218
+          },
+          "detectable": {
+            "caught": 9,
+            "laundering_transfers": 510,
+            "laundering_transfers_in_alerts": 25,
+            "scheme_recall_caught": 0.173077,
+            "scheme_recall_touched": 0.211538,
+            "schemes": 52,
+            "touched": 11,
+            "transfer_recall": 0.04902
+          },
+          "development": {
+            "caught": 5,
+            "laundering_transfers": 292,
+            "laundering_transfers_in_alerts": 10,
+            "scheme_recall_caught": 0.15625,
+            "scheme_recall_touched": 0.1875,
+            "schemes": 32,
+            "touched": 6,
+            "transfer_recall": 0.034247
+          },
+          "held_out": {
+            "caught": 12,
+            "laundering_transfers": 230,
+            "laundering_transfers_in_alerts": 23,
+            "scheme_recall_caught": 0.375,
+            "scheme_recall_touched": 0.40625,
+            "schemes": 32,
+            "touched": 13,
+            "transfer_recall": 0.1
+          },
+          "held_out_detectable": {
+            "caught": 7,
+            "laundering_transfers": 224,
+            "laundering_transfers_in_alerts": 18,
+            "scheme_recall_caught": 0.269231,
+            "scheme_recall_touched": 0.307692,
+            "schemes": 26,
+            "touched": 8,
+            "transfer_recall": 0.080357
+          }
+        }
+      },
+      "fan-in": {
+        "alerts": {
+          "false_loose": 3,
+          "false_strict": 9,
+          "precision_loose": 0.863636,
+          "precision_strict": 0.590909,
+          "raised": 22,
+          "true_loose": 19,
+          "true_strict": 13
+        },
+        "false_alerts_per_caught_scheme": 0.5625,
+        "recall": {
+          "all": {
+            "caught": 16,
+            "laundering_transfers": 522,
+            "laundering_transfers_in_alerts": 171,
+            "scheme_recall_caught": 0.25,
+            "scheme_recall_touched": 0.34375,
+            "schemes": 64,
+            "touched": 22,
+            "transfer_recall": 0.327586
+          },
+          "detectable": {
+            "caught": 16,
+            "laundering_transfers": 510,
+            "laundering_transfers_in_alerts": 171,
+            "scheme_recall_caught": 0.307692,
+            "scheme_recall_touched": 0.423077,
+            "schemes": 52,
+            "touched": 22,
+            "transfer_recall": 0.335294
+          },
+          "development": {
+            "caught": 6,
+            "laundering_transfers": 292,
+            "laundering_transfers_in_alerts": 71,
+            "scheme_recall_caught": 0.1875,
+            "scheme_recall_touched": 0.34375,
+            "schemes": 32,
+            "touched": 11,
+            "transfer_recall": 0.243151
+          },
+          "held_out": {
+            "caught": 10,
+            "laundering_transfers": 230,
+            "laundering_transfers_in_alerts": 100,
+            "scheme_recall_caught": 0.3125,
+            "scheme_recall_touched": 0.34375,
+            "schemes": 32,
+            "touched": 11,
+            "transfer_recall": 0.434783
+          },
+          "held_out_detectable": {
+            "caught": 10,
+            "laundering_transfers": 224,
+            "laundering_transfers_in_alerts": 100,
+            "scheme_recall_caught": 0.384615,
+            "scheme_recall_touched": 0.423077,
+            "schemes": 26,
+            "touched": 11,
+            "transfer_recall": 0.446429
+          }
+        }
+      },
+      "fan-out": {
+        "alerts": {
+          "false_loose": 33,
+          "false_strict": 59,
+          "precision_loose": 0.5,
+          "precision_strict": 0.106061,
+          "raised": 66,
+          "true_loose": 33,
+          "true_strict": 7
+        },
+        "false_alerts_per_caught_scheme": 4.916667,
+        "recall": {
+          "all": {
+            "caught": 12,
+            "laundering_transfers": 522,
+            "laundering_transfers_in_alerts": 159,
+            "scheme_recall_caught": 0.1875,
+            "scheme_recall_touched": 0.328125,
+            "schemes": 64,
+            "touched": 21,
+            "transfer_recall": 0.304598
+          },
+          "detectable": {
+            "caught": 12,
+            "laundering_transfers": 510,
+            "laundering_transfers_in_alerts": 159,
+            "scheme_recall_caught": 0.230769,
+            "scheme_recall_touched": 0.403846,
+            "schemes": 52,
+            "touched": 21,
+            "transfer_recall": 0.311765
+          },
+          "development": {
+            "caught": 7,
+            "laundering_transfers": 292,
+            "laundering_transfers_in_alerts": 94,
+            "scheme_recall_caught": 0.21875,
+            "scheme_recall_touched": 0.40625,
+            "schemes": 32,
+            "touched": 13,
+            "transfer_recall": 0.321918
+          },
+          "held_out": {
+            "caught": 5,
+            "laundering_transfers": 230,
+            "laundering_transfers_in_alerts": 65,
+            "scheme_recall_caught": 0.15625,
+            "scheme_recall_touched": 0.25,
+            "schemes": 32,
+            "touched": 8,
+            "transfer_recall": 0.282609
+          },
+          "held_out_detectable": {
+            "caught": 5,
+            "laundering_transfers": 224,
+            "laundering_transfers_in_alerts": 65,
+            "scheme_recall_caught": 0.192308,
+            "scheme_recall_touched": 0.307692,
+            "schemes": 26,
+            "touched": 8,
+            "transfer_recall": 0.290179
+          }
+        }
+      },
+      "gather-scatter": {
+        "alerts": {
+          "false_loose": 2,
+          "false_strict": 59,
+          "precision_loose": 0.96875,
+          "precision_strict": 0.078125,
+          "raised": 64,
+          "true_loose": 62,
+          "true_strict": 5
+        },
+        "false_alerts_per_caught_scheme": 4.538462,
+        "recall": {
+          "all": {
+            "caught": 13,
+            "laundering_transfers": 522,
+            "laundering_transfers_in_alerts": 192,
+            "scheme_recall_caught": 0.203125,
+            "scheme_recall_touched": 0.578125,
+            "schemes": 64,
+            "touched": 37,
+            "transfer_recall": 0.367816
+          },
+          "detectable": {
+            "caught": 9,
+            "laundering_transfers": 510,
+            "laundering_transfers_in_alerts": 188,
+            "scheme_recall_caught": 0.173077,
+            "scheme_recall_touched": 0.634615,
+            "schemes": 52,
+            "touched": 33,
+            "transfer_recall": 0.368627
+          },
+          "development": {
+            "caught": 7,
+            "laundering_transfers": 292,
+            "laundering_transfers_in_alerts": 133,
+            "scheme_recall_caught": 0.21875,
+            "scheme_recall_touched": 0.71875,
+            "schemes": 32,
+            "touched": 23,
+            "transfer_recall": 0.455479
+          },
+          "held_out": {
+            "caught": 6,
+            "laundering_transfers": 230,
+            "laundering_transfers_in_alerts": 59,
+            "scheme_recall_caught": 0.1875,
+            "scheme_recall_touched": 0.4375,
+            "schemes": 32,
+            "touched": 14,
+            "transfer_recall": 0.256522
+          },
+          "held_out_detectable": {
+            "caught": 4,
+            "laundering_transfers": 224,
+            "laundering_transfers_in_alerts": 57,
+            "scheme_recall_caught": 0.153846,
+            "scheme_recall_touched": 0.461538,
+            "schemes": 26,
+            "touched": 12,
+            "transfer_recall": 0.254464
+          }
+        }
+      },
+      "scatter-gather": {
+        "alerts": {
+          "false_loose": 0,
+          "false_strict": 0,
+          "precision_loose": 1.0,
+          "precision_strict": 1.0,
+          "raised": 6,
+          "true_loose": 6,
+          "true_strict": 6
+        },
+        "false_alerts_per_caught_scheme": 0.0,
+        "recall": {
+          "all": {
+            "caught": 6,
+            "laundering_transfers": 522,
+            "laundering_transfers_in_alerts": 100,
+            "scheme_recall_caught": 0.09375,
+            "scheme_recall_touched": 0.09375,
+            "schemes": 64,
+            "touched": 6,
+            "transfer_recall": 0.191571
+          },
+          "detectable": {
+            "caught": 6,
+            "laundering_transfers": 510,
+            "laundering_transfers_in_alerts": 100,
+            "scheme_recall_caught": 0.115385,
+            "scheme_recall_touched": 0.115385,
+            "schemes": 52,
+            "touched": 6,
+            "transfer_recall": 0.196078
+          },
+          "development": {
+            "caught": 3,
+            "laundering_transfers": 292,
+            "laundering_transfers_in_alerts": 38,
+            "scheme_recall_caught": 0.09375,
+            "scheme_recall_touched": 0.09375,
+            "schemes": 32,
+            "touched": 3,
+            "transfer_recall": 0.130137
+          },
+          "held_out": {
+            "caught": 3,
+            "laundering_transfers": 230,
+            "laundering_transfers_in_alerts": 62,
+            "scheme_recall_caught": 0.09375,
+            "scheme_recall_touched": 0.09375,
+            "schemes": 32,
+            "touched": 3,
+            "transfer_recall": 0.269565
+          },
+          "held_out_detectable": {
+            "caught": 3,
+            "laundering_transfers": 224,
+            "laundering_transfers_in_alerts": 62,
+            "scheme_recall_caught": 0.115385,
+            "scheme_recall_touched": 0.115385,
+            "schemes": 26,
+            "touched": 3,
+            "transfer_recall": 0.276786
+          }
+        }
+      }
+    },
+    "per_family": {
+      "BIPARTITE": {
+        "attributed_alerts": {
+          "raised": 7,
+          "true_loose": 7,
+          "true_strict": 0
+        },
+        "recall": {
+          "all": {
+            "caught": 2,
+            "laundering_transfers": 41,
+            "laundering_transfers_in_alerts": 11,
+            "scheme_recall_caught": 0.25,
+            "scheme_recall_touched": 0.75,
+            "schemes": 8,
+            "touched": 6,
+            "transfer_recall": 0.268293
+          },
+          "detectable": {
+            "caught": 0,
+            "laundering_transfers": 39,
+            "laundering_transfers_in_alerts": 9,
+            "scheme_recall_caught": 0.0,
+            "scheme_recall_touched": 0.666667,
+            "schemes": 6,
+            "touched": 4,
+            "transfer_recall": 0.230769
+          },
+          "development": {
+            "caught": 2,
+            "laundering_transfers": 17,
+            "laundering_transfers_in_alerts": 7,
+            "scheme_recall_caught": 0.5,
+            "scheme_recall_touched": 0.75,
+            "schemes": 4,
+            "touched": 3,
+            "transfer_recall": 0.411765
+          },
+          "held_out": {
+            "caught": 0,
+            "laundering_transfers": 24,
+            "laundering_transfers_in_alerts": 4,
+            "scheme_recall_caught": 0.0,
+            "scheme_recall_touched": 0.75,
+            "schemes": 4,
+            "touched": 3,
+            "transfer_recall": 0.166667
+          },
+          "held_out_detectable": {
+            "caught": 0,
+            "laundering_transfers": 24,
+            "laundering_transfers_in_alerts": 4,
+            "scheme_recall_caught": 0.0,
+            "scheme_recall_touched": 0.75,
+            "schemes": 4,
+            "touched": 3,
+            "transfer_recall": 0.166667
+          }
+        }
+      },
+      "CYCLE": {
+        "attributed_alerts": {
+          "raised": 7,
+          "true_loose": 7,
+          "true_strict": 3
+        },
+        "recall": {
+          "all": {
+            "caught": 3,
+            "laundering_transfers": 47,
+            "laundering_transfers_in_alerts": 15,
+            "scheme_recall_caught": 0.375,
+            "scheme_recall_touched": 0.75,
+            "schemes": 8,
+            "touched": 6,
+            "transfer_recall": 0.319149
+          },
+          "detectable": {
+            "caught": 3,
+            "laundering_transfers": 47,
+            "laundering_transfers_in_alerts": 15,
+            "scheme_recall_caught": 0.375,
+            "scheme_recall_touched": 0.75,
+            "schemes": 8,
+            "touched": 6,
+            "transfer_recall": 0.319149
+          },
+          "development": {
+            "caught": 1,
+            "laundering_transfers": 31,
+            "laundering_transfers_in_alerts": 10,
+            "scheme_recall_caught": 0.25,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.322581
+          },
+          "held_out": {
+            "caught": 2,
+            "laundering_transfers": 16,
+            "laundering_transfers_in_alerts": 5,
+            "scheme_recall_caught": 0.5,
+            "scheme_recall_touched": 0.5,
+            "schemes": 4,
+            "touched": 2,
+            "transfer_recall": 0.3125
+          },
+          "held_out_detectable": {
+            "caught": 2,
+            "laundering_transfers": 16,
+            "laundering_transfers_in_alerts": 5,
+            "scheme_recall_caught": 0.5,
+            "scheme_recall_touched": 0.5,
+            "schemes": 4,
+            "touched": 2,
+            "transfer_recall": 0.3125
+          }
+        }
+      },
+      "FAN-IN": {
+        "attributed_alerts": {
+          "raised": 12,
+          "true_loose": 12,
+          "true_strict": 5
+        },
+        "recall": {
+          "all": {
+            "caught": 6,
+            "laundering_transfers": 59,
+            "laundering_transfers_in_alerts": 57,
+            "scheme_recall_caught": 0.75,
+            "scheme_recall_touched": 0.875,
+            "schemes": 8,
+            "touched": 7,
+            "transfer_recall": 0.966102
+          },
+          "detectable": {
+            "caught": 6,
+            "laundering_transfers": 58,
+            "laundering_transfers_in_alerts": 57,
+            "scheme_recall_caught": 0.857143,
+            "scheme_recall_touched": 1.0,
+            "schemes": 7,
+            "touched": 7,
+            "transfer_recall": 0.982759
+          },
+          "development": {
+            "caught": 3,
+            "laundering_transfers": 27,
+            "laundering_transfers_in_alerts": 26,
+            "scheme_recall_caught": 0.75,
+            "scheme_recall_touched": 0.75,
+            "schemes": 4,
+            "touched": 3,
+            "transfer_recall": 0.962963
+          },
+          "held_out": {
+            "caught": 3,
+            "laundering_transfers": 32,
+            "laundering_transfers_in_alerts": 31,
+            "scheme_recall_caught": 0.75,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.96875
+          },
+          "held_out_detectable": {
+            "caught": 3,
+            "laundering_transfers": 32,
+            "laundering_transfers_in_alerts": 31,
+            "scheme_recall_caught": 0.75,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.96875
+          }
+        }
+      },
+      "FAN-OUT": {
+        "attributed_alerts": {
+          "raised": 13,
+          "true_loose": 13,
+          "true_strict": 0
+        },
+        "recall": {
+          "all": {
+            "caught": 8,
+            "laundering_transfers": 54,
+            "laundering_transfers_in_alerts": 54,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 1.0
+          },
+          "detectable": {
+            "caught": 4,
+            "laundering_transfers": 50,
+            "laundering_transfers_in_alerts": 50,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          },
+          "development": {
+            "caught": 4,
+            "laundering_transfers": 35,
+            "laundering_transfers_in_alerts": 35,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          },
+          "held_out": {
+            "caught": 4,
+            "laundering_transfers": 19,
+            "laundering_transfers_in_alerts": 19,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          },
+          "held_out_detectable": {
+            "caught": 1,
+            "laundering_transfers": 16,
+            "laundering_transfers_in_alerts": 16,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 1,
+            "touched": 1,
+            "transfer_recall": 1.0
+          }
+        }
+      },
+      "GATHER-SCATTER": {
+        "attributed_alerts": {
+          "raised": 35,
+          "true_loose": 35,
+          "true_strict": 16
+        },
+        "recall": {
+          "all": {
+            "caught": 7,
+            "laundering_transfers": 116,
+            "laundering_transfers_in_alerts": 110,
+            "scheme_recall_caught": 0.875,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 0.948276
+          },
+          "detectable": {
+            "caught": 7,
+            "laundering_transfers": 116,
+            "laundering_transfers_in_alerts": 110,
+            "scheme_recall_caught": 0.875,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 0.948276
+          },
+          "development": {
+            "caught": 3,
+            "laundering_transfers": 56,
+            "laundering_transfers_in_alerts": 52,
+            "scheme_recall_caught": 0.75,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.928571
+          },
+          "held_out": {
+            "caught": 4,
+            "laundering_transfers": 60,
+            "laundering_transfers_in_alerts": 58,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.966667
+          },
+          "held_out_detectable": {
+            "caught": 4,
+            "laundering_transfers": 60,
+            "laundering_transfers_in_alerts": 58,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.966667
+          }
+        }
+      },
+      "RANDOM": {
+        "attributed_alerts": {
+          "raised": 16,
+          "true_loose": 16,
+          "true_strict": 0
+        },
+        "recall": {
+          "all": {
+            "caught": 4,
+            "laundering_transfers": 27,
+            "laundering_transfers_in_alerts": 16,
+            "scheme_recall_caught": 0.5,
+            "scheme_recall_touched": 0.75,
+            "schemes": 8,
+            "touched": 6,
+            "transfer_recall": 0.592593
+          },
+          "detectable": {
+            "caught": 1,
+            "laundering_transfers": 22,
+            "laundering_transfers_in_alerts": 13,
+            "scheme_recall_caught": 0.333333,
+            "scheme_recall_touched": 1.0,
+            "schemes": 3,
+            "touched": 3,
+            "transfer_recall": 0.590909
+          },
+          "development": {
+            "caught": 1,
+            "laundering_transfers": 22,
+            "laundering_transfers_in_alerts": 13,
+            "scheme_recall_caught": 0.25,
+            "scheme_recall_touched": 0.75,
+            "schemes": 4,
+            "touched": 3,
+            "transfer_recall": 0.590909
+          },
+          "held_out": {
+            "caught": 3,
+            "laundering_transfers": 5,
+            "laundering_transfers_in_alerts": 3,
+            "scheme_recall_caught": 0.75,
+            "scheme_recall_touched": 0.75,
+            "schemes": 4,
+            "touched": 3,
+            "transfer_recall": 0.6
+          },
+          "held_out_detectable": {
+            "caught": 1,
+            "laundering_transfers": 2,
+            "laundering_transfers_in_alerts": 1,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 1,
+            "touched": 1,
+            "transfer_recall": 0.5
+          }
+        }
+      },
+      "SCATTER-GATHER": {
+        "attributed_alerts": {
+          "raised": 22,
+          "true_loose": 22,
+          "true_strict": 14
+        },
+        "recall": {
+          "all": {
+            "caught": 8,
+            "laundering_transfers": 114,
+            "laundering_transfers_in_alerts": 114,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 1.0
+          },
+          "detectable": {
+            "caught": 8,
+            "laundering_transfers": 114,
+            "laundering_transfers_in_alerts": 114,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 1.0
+          },
+          "development": {
+            "caught": 4,
+            "laundering_transfers": 48,
+            "laundering_transfers_in_alerts": 48,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          },
+          "held_out": {
+            "caught": 4,
+            "laundering_transfers": 66,
+            "laundering_transfers_in_alerts": 66,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          },
+          "held_out_detectable": {
+            "caught": 4,
+            "laundering_transfers": 66,
+            "laundering_transfers_in_alerts": 66,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          }
+        }
+      },
+      "STACK": {
+        "attributed_alerts": {
+          "raised": 19,
+          "true_loose": 19,
+          "true_strict": 1
+        },
+        "recall": {
+          "all": {
+            "caught": 4,
+            "laundering_transfers": 64,
+            "laundering_transfers_in_alerts": 29,
+            "scheme_recall_caught": 0.5,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 0.453125
+          },
+          "detectable": {
+            "caught": 4,
+            "laundering_transfers": 64,
+            "laundering_transfers_in_alerts": 29,
+            "scheme_recall_caught": 0.5,
+            "scheme_recall_touched": 1.0,
+            "schemes": 8,
+            "touched": 8,
+            "transfer_recall": 0.453125
+          },
+          "development": {
+            "caught": 0,
+            "laundering_transfers": 56,
+            "laundering_transfers_in_alerts": 21,
+            "scheme_recall_caught": 0.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 0.375
+          },
+          "held_out": {
+            "caught": 4,
+            "laundering_transfers": 8,
+            "laundering_transfers_in_alerts": 8,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          },
+          "held_out_detectable": {
+            "caught": 4,
+            "laundering_transfers": 8,
+            "laundering_transfers_in_alerts": 8,
+            "scheme_recall_caught": 1.0,
+            "scheme_recall_touched": 1.0,
+            "schemes": 4,
+            "touched": 4,
+            "transfer_recall": 1.0
+          }
+        }
+      }
+    }
+  },
+  "notes": [
+    "v1 used starting values and was not tuned.",
+    "The numbers apply to this slice only (17 days, sampled normal traffic).",
+    "Recall is reported on all, detectable (2 or more transfers), development and held-out schemes. The held-out numbers are the headline.",
+    "Precision uses all alerts and is not split by scheme.",
+    "Structuring and volume spike are not part of v1.",
+    "Per-family alert counts include only alerts that contain at least one laundering transfer, attributed to the family holding most of those transfers (ties alphabetical).",
+    "Alerts with no laundering transfer appear in no family, so per-family numbers do not describe false alarms. Use the overall and per-detector figures for precision and noise.",
+    "Per-detector recall uses only that detector's alerts. Per-family recall uses all alerts."
+  ],
+  "ruleset_version": "v1",
+  "split": {
+    "development": 32,
+    "development_per_family": 4,
+    "held_out": 32,
+    "seed": 42
+  }
+}

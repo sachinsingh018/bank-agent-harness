@@ -60,3 +60,19 @@ def test_rules_have_no_database_imports() -> None:
         for name in _import_names(tree):
             assert not name.startswith("sqlalchemy"), f"{path.name} imports {name}"
             assert not name.startswith("harness.db"), f"{path.name} imports {name}"
+
+
+def test_no_label_mentions_in_modules_or_apps() -> None:
+    root = AML.parent.parent
+    checked = 0
+    for top in ("modules", "apps"):
+        for path in sorted((root / top).rglob("*.py")):
+            if ".venv" in path.parts or "node_modules" in path.parts:
+                continue
+            if path.name.startswith("test_") or path.name == "conftest.py":
+                continue
+            checked += 1
+            text = path.read_text(encoding="utf-8")
+            for word in FORBIDDEN_WORDS:
+                assert word not in text, f"{path} mentions {word}"
+    assert checked > 5
