@@ -17,7 +17,6 @@ Update this file at the end of each working session. Do not track setup status h
 - `ubuntu-latest` is moving to Ubuntu 26. Pin `ubuntu-24.04` if CI should not change under us.
 - TypeScript is held at 5.9.3 because eslint-config-next rejects TS 7. Revisit later.
 - The pre-commit large-file hook (500 KB) exempts only `data/aml_slice_hi_small.csv` (decisions/0003).
-- The web home page still shows a "deploy test" line, added to test auto-deploy. Remove it when no longer needed.
 
 ## Next piece of work
 Load `data/aml_slice_hi_small.csv` into Postgres (M1): tables for accounts and transactions, an Alembic migration, and a loader script that is safe to rerun. Then the AML rules layer and the rules-only baseline metrics. See docs/brief.md section 13 and data/README.md.
