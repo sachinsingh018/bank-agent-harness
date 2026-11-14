@@ -51,7 +51,7 @@ This is a promise the tests must prove. Several layers, so no single mistake bre
 
 **Layer 1: a narrow door.** All database access goes through one module, `tools/aml/db.py`. It opens a connection in a read-only transaction (`SET TRANSACTION READ ONLY`), so writes fail at the database. Queries use the SQLAlchemy models `Transaction`, `Account`, `Alert` and `AlertTransaction` only.
 
-**Layer 2: a runtime guard.** `db.py` installs a hook that looks at the text of every SQL statement before it runs and refuses it (raising an error) if it mentions `transaction_labels` or any table outside the allowed four. This runs in production, not just in tests, so a future careless query fails loudly instead of leaking.
+**Layer 2: a runtime guard.** `db.py` installs a hook that inspects every statement before it runs and refuses it (raising an error) unless it is a plain read of the four allowed tables. This runs in production, not just in tests, so a future careless query fails loudly instead of leaking. It checks the query object, not SQL text, because text parsing could not be made safe (see docs/decisions/0004-tools-sql-guard.md).
 
 **Layer 3: static tests.** A test reads every non-test file under `tools/` and fails if:
 - it mentions `TransactionLabel` or `transaction_labels`
@@ -99,7 +99,7 @@ tools/aml/models.py      Pydantic inputs and outputs
 tools/aml/caps.py        the caps above
 tools/aml/db.py          read-only connection, runtime guard, generic errors
 tools/aml/queries.py     the query functions (take a connection, return models)
-tools/aml/registry.py    the list of tools and their sample inputs for tests
+tools/aml/query_registry.py  the list of query functions and their sample inputs for tests
 tools/aml/server.py      the MCP server (stdio), thin wrapper over the registry
 ```
 

@@ -1,12 +1,16 @@
 """Structural guard: the rules and the transaction reader must never touch the answer key."""
 
 import ast
+import re
 from pathlib import Path
 
 AML = Path(__file__).parent
 RULE_FILES = sorted((AML / "rules").glob("*.py"))
 SCANNED = [*RULE_FILES, AML / "load_txns.py", AML / "run_rules.py"]
 FORBIDDEN_WORDS = ("TransactionLabel", "transaction_labels")
+# The ONE documented exception: the SQL guard names the table once, as its deny constant.
+# tools/aml/test_guard_static.py checks that this is the only use in that file.
+LABEL_EXEMPT = AML.parent.parent / "tools" / "aml" / "db.py"
 
 
 def _import_names(tree: ast.AST) -> list[str]:
@@ -62,17 +66,84 @@ def test_rules_have_no_database_imports() -> None:
             assert not name.startswith("harness.db"), f"{path.name} imports {name}"
 
 
-def test_no_label_mentions_in_modules_or_apps() -> None:
+def test_no_label_mentions_in_modules_apps_or_tools() -> None:
     root = AML.parent.parent
     checked = 0
-    for top in ("modules", "apps"):
+    for top in ("modules", "apps", "tools"):
         for path in sorted((root / top).rglob("*.py")):
             if ".venv" in path.parts or "node_modules" in path.parts:
                 continue
             if path.name.startswith("test_") or path.name == "conftest.py":
+                continue
+            if path == LABEL_EXEMPT:
                 continue
             checked += 1
             text = path.read_text(encoding="utf-8")
             for word in FORBIDDEN_WORDS:
                 assert word not in text, f"{path} mentions {word}"
     assert checked > 5
+
+
+def test_label_exemption_is_exactly_one_file() -> None:
+    root = AML.parent.parent
+    mentioning = [
+        p
+        for top in ("modules", "apps", "tools")
+        for p in sorted((root / top).rglob("*.py"))
+        if ".venv" not in p.parts
+        and "node_modules" not in p.parts
+        and not p.name.startswith("test_")
+        and p.name != "conftest.py"
+        and "transaction_labels" in p.read_text(encoding="utf-8")
+    ]
+    assert mentioning == [LABEL_EXEMPT]
+
+
+DRIVER_BYPASS_WORDS = (
+    "raw_connection",
+    "driver_connection",
+    ".cursor(",
+    "exec_driver_sql",
+    "literal_column",
+)
+
+
+def test_tools_code_cannot_reach_the_driver_or_run_raw_sql() -> None:
+    root = AML.parent.parent / "tools"
+    checked = 0
+    for path in sorted(root.rglob("*.py")):
+        if ".venv" in path.parts or path.name.startswith("test_") or path.name == "conftest.py":
+            continue
+        checked += 1
+        text = path.read_text(encoding="utf-8")
+        for word in DRIVER_BYPASS_WORDS:
+            assert word not in text, f"{path} uses {word}"
+        assert not re.search(r"(?<![A-Za-z0-9_])text\(", text), f"{path} uses text("
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "execute":
+                first = node.args[0] if node.args else None
+                assert not isinstance(first, ast.JoinedStr | ast.Constant), f"{path} raw execute"
+    assert checked > 5
+
+
+def test_tools_code_other_than_the_door_cannot_open_connections_or_import_writers() -> None:
+    root = AML.parent.parent / "tools"
+    door = root / "aml" / "db.py"
+    banned_prefixes = (
+        "psycopg",
+        "sqlalchemy.event",
+        "sqlalchemy.ext.compiler",
+        "harness.db.session",
+        "modules",
+    )
+    checked = 0
+    for path in sorted(root.rglob("*.py")):
+        if ".venv" in path.parts or path.name.startswith("test_") or path.name == "conftest.py":
+            continue
+        if path == door:
+            continue
+        checked += 1
+        for name in _import_names(ast.parse(path.read_text(encoding="utf-8"))):
+            assert not name.startswith(banned_prefixes), f"{path} imports {name}"
+            assert name not in ("sqlalchemy.create_engine", "sqlalchemy.event"), f"{path} {name}"
+    assert checked > 4
