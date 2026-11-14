@@ -10,4 +10,4 @@
 - Load it from Kaggle or object storage at setup time: more moving parts, and CI would need credentials.
 - Keep it out of git and only load it into Neon: loses reproducibility for evals.
 
-**Open:** the dataset license must be copied into data/README.md before this is public. Check it allows redistributing a derived slice and what attribution it needs.
+**License:** the dataset is CDLA Sharing 1.0. Redistributing the slice is allowed as long as it stays under that license with attribution to the author. This is recorded in data/README.md.
