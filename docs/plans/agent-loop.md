@@ -94,6 +94,7 @@ Rules:
 - Parallel calls in one turn each count. If a turn asks for more calls than steps remain, the calls past the limit are not run and the case ends as human_review `limit_steps`.
 - Repeated identical calls (same tool, same arguments) are not run again: the cached result is returned with a note that it is a repeat. They still count as a step.
 - A tool error (`invalid_argument`, `not_found`, `too_large`, `internal`, timeout) goes back to the model as an error result and counts as a step.
+- Limits are checked before each model call, right after each model call (token budget) and after a turn's tool calls (wall clock), even when that turn holds a valid submission. One model call or one turn of tool calls can overshoot a limit by at most one call before the check catches it.
 - **Retry budget is one, in total.** The single correction turn is used by whichever comes first: the model ended its turn without `submit_findings`, the submission failed Pydantic validation, or the verifiers failed. The second failure of any kind ends in human_review.
 
 Stop reasons:

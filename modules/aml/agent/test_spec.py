@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from harness.prompts import REPO_ROOT, load_prompt
-from modules.aml.agent.models import AmlFindings
+from modules.aml.agent.models import SUBMIT_TOOL_NAME, AmlFindings
 from modules.aml.agent.spec import AML_SPEC, build_case_message
 from tools.aml.caps import TOOL_TIMEOUT_SECONDS
 from tools.aml.launch import server_params
@@ -61,6 +61,7 @@ def test_case_message_contains_the_alert_id() -> None:
 def test_spec_wiring() -> None:
     assert AML_SPEC.name == "aml"
     assert AML_SPEC.output_model is AmlFindings
+    assert AML_SPEC.submit_tool.name == SUBMIT_TOOL_NAME
     assert AML_SPEC.server_params is server_params
     assert AML_SPEC.tool_timeout_seconds == TOOL_TIMEOUT_SECONDS
     assert AML_SPEC.verifiers == ()

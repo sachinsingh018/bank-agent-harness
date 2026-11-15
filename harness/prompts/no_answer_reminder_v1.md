@@ -1,0 +1,1 @@
+You ended your turn without submitting an answer. The investigation only ends when you call the {submit_tool} tool. Use the tools if you need more evidence, then call {submit_tool} exactly once with your findings.
