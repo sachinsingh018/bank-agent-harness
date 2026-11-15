@@ -235,7 +235,7 @@ New dependencies, pinned to releases at least two weeks old: `anthropic==2.3.0`,
 
 ## 12. Data leak found during verification: late dates
 
-Transfer ids follow time order. Normal traffic in the slice almost stops after 2022-09-10: of the 203 transfers dated 11 to 17 September, 126 are laundering (62%), against 396 of 25,290 (about 1.6%) before. The IBM generator lets laundering schemes run past the end of the normal sample. An agent or a tuned prompt could learn "late date means laundering" and score well for the wrong reason.
+Transfer ids follow time order. Normal traffic in the slice almost stops after 2022-09-10: of the 198 transfers dated 11 to 17 September, 126 are laundering (64%), against 396 of 25,295 (about 1.6%) before. The IBM generator lets laundering schemes run past the end of the normal sample. An agent or a tuned prompt could learn "late date means laundering" and score well for the wrong reason.
 
 Handling:
 - The prompt never mentions the date range or this effect, and no prompt tuning may use it.

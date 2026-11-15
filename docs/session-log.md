@@ -17,7 +17,7 @@ Update this file at the end of each working session. Do not track setup status h
 - Never commit secrets. The repo is public.
 
 ## Things learned
-- Local database setup in a fresh Codespace: `DATABASE_URL` (devcontainer) points at the local `harness` database, already loaded. For the database tests create `harness_test`, run `alembic upgrade head` and `python -m data.load_aml_slice load` against it with `DATABASE_URL` set to it, then run pytest with `TEST_DATABASE_URL` set to the devcontainer `DATABASE_URL` with the database name changed to `harness_test`. Without it 57 tests skip.
+- `DATABASE_URL` in this Codespace comes from the Codespaces secret and points at Neon, overriding the devcontainer default. Always set `DATABASE_URL` explicitly to the local database (devcontainer URL, database `harness`) for development commands; on 2026-11-15 a few read-only checks hit Neon by mistake because of this. The local `harness` database must be migrated, loaded (`python -m data.load_aml_slice load`) and given v1 alerts (`python -m modules.aml.run_rules --ruleset v1`) in a fresh Codespace. For the database tests create `harness_test`, run `alembic upgrade head` and `python -m data.load_aml_slice load` against it with `DATABASE_URL` set to it, then run pytest with `TEST_DATABASE_URL` set to the devcontainer `DATABASE_URL` with the database name changed to `harness_test`. Without it 57 tests skip.
 - Late date leak in the slice: after 2022-09-10 most transfers are laundering (decisions/0006). Agent metrics are split by it.
 - The pre-commit ruff format hook also reformats Python code blocks inside markdown files.
 - A rebuild wiped `~/.claude` once. History was meant to persist through the `claude-home` volume, but on 2026-11-15 the previous chat history was gone again after the Codespace stopped. Rely on this log, not chat history.
@@ -42,7 +42,7 @@ M2 core, following `docs/plans/agent-loop.md` (verified by a reviewer pass, owne
 6. In progress: label guard changes, datasets, runner, scorer, CI fast eval, decision note 0005.
 7. Next after that: first real scored run (needs `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` as a Codespaces secret and owner approval for spend), then 8 audit and run tables.
 Follow-ups noted by reviewers (safe today, all paths end in human review): verifiers run synchronously after the last wall clock check, so a slow database call is not covered by the time limit; a database error inside a verifier is reported as verifier_failed rather than an infrastructure reason; a close recommendation does not check the alert exists (alert_id must still equal the case id).
-Neon smoke test is not needed for this work (local database has the same data). Do it before the hosted demo.
+Neon smoke test is not needed for this work: the local database, once loaded, has the same data. Do it before the hosted demo.
 Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
 
 ## Future hardening (deferred)
