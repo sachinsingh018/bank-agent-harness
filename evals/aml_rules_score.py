@@ -3,9 +3,9 @@
 Usage (from the repo root):
     uv run python -m evals.aml_rules_score --ruleset v1 [--out PATH] [--no-write]
 
-This is the only non-test code that reads the labels table. It is strictly read-only (SELECT
-only). The database URL comes from the environment only and is never printed. The report holds
-counts only.
+This file is one of the few allowed label readers (see evals/test_label_readers.py and
+docs/decisions/0005). It is strictly read-only (SELECT only). The database URL comes from the
+environment only and is never printed. The report holds counts only.
 
 The first half of the file is pure (no database code). The database part is at the bottom.
 """
@@ -335,7 +335,10 @@ def render_summary(report: Mapping[str, Any]) -> str:
 # ---------------------------------------------------------------------------------------------
 
 
-def score_from_connection(conn: Connection, ruleset_version: str) -> dict[str, Any]:
+def load_alerts_and_labels(
+    conn: Connection, ruleset_version: str
+) -> tuple[list[ScoredAlert], dict[int, Label]]:
+    """Alerts of one ruleset version with their transfer ids, plus every label. SELECT only."""
     alert_rows = conn.execute(
         select(Alert.alert_id, Alert.detector).where(Alert.ruleset_version == ruleset_version)
     ).all()
@@ -362,6 +365,11 @@ def score_from_connection(conn: Connection, ruleset_version: str) -> dict[str, A
         )
     ).all()
     labels = {t: Label(bool(lau), aid, atype) for t, lau, aid, atype in label_rows}
+    return alerts, labels
+
+
+def score_from_connection(conn: Connection, ruleset_version: str) -> dict[str, Any]:
+    alerts, labels = load_alerts_and_labels(conn, ruleset_version)
     return build_report(ruleset_version, alerts, labels)
 
 
