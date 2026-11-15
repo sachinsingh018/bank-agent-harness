@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from mcp import StdioServerParameters
 from pydantic import BaseModel
@@ -27,3 +28,6 @@ class ModuleSpec:
     verifiers: Sequence[Verifier]
     eval_dataset: Path  # dataset manifest
     build_case_message: Callable[[str], str]  # case id -> first user message
+    # database url -> factory of the read-only lookup the verifiers use (VerifyContext.lookup).
+    # If the factory has a close() method, run_case calls it when the case ends.
+    make_lookup_factory: Callable[[str], Callable[[], Any]]

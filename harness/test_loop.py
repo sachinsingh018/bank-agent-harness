@@ -75,6 +75,7 @@ def _spec(verifiers: Sequence[SeenVerifier] = (SeenVerifier(),)) -> ModuleSpec:
         verifiers=tuple(verifiers),
         eval_dataset=Path("unused.json"),
         build_case_message=lambda case_id: f"Investigate {case_id}.",
+        make_lookup_factory=lambda url: lambda: None,
     )
 
 
@@ -255,15 +256,37 @@ def test_api_exception_is_model_error_without_message() -> None:
     assert SECRET not in result.model_dump_json()
 
 
-def test_unexpected_exception_is_internal_error() -> None:
+def test_crashing_verifier_is_a_failure_not_a_pass() -> None:
     class BadVerifier(SeenVerifier):
+        name = "bad"
+
         def check(self, output: BaseModel, ctx: VerifyContext) -> VerifierResult:
             raise ValueError(SECRET)
 
-    result, _, _ = _run([tool_call_response([_submit()])], spec=_spec((BadVerifier(),)))
-    assert result.reason == "internal_error"
-    assert result.trace.error_class == "ValueError"
+    script = [
+        tool_call_response([_call("lookup", id=7)], id_prefix="a"),
+        tool_call_response([_submit()], id_prefix="b"),
+        tool_call_response([_submit()], id_prefix="c"),
+    ]
+    result, _, _ = _run(script, spec=_spec((SeenVerifier(), BadVerifier())))
+    assert result.status == "human_review" and result.reason == "verifier_failed"
+    assert [r.passed for r in result.verifier_results] == [True, False]
+    assert result.verifier_results[1].errors == ["verifier error (ValueError)"]
     assert SECRET not in result.model_dump_json()
+
+
+def test_verify_context_carries_the_case_id() -> None:
+    seen: list[str] = []
+
+    class CaseVerifier(SeenVerifier):
+        def check(self, output: BaseModel, ctx: VerifyContext) -> VerifierResult:
+            seen.append(ctx.case_id)
+            return super().check(output, ctx)
+
+    script = [tool_call_response([_call("lookup", id=7)]), tool_call_response([_submit()])]
+    result, _, _ = _run(script, spec=_spec((CaseVerifier(),)))
+    assert result.status == "proposed"
+    assert seen == ["C-1"]
 
 
 # ---- limits -----------------------------------------------------------------------------

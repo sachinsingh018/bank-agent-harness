@@ -7,7 +7,7 @@ a separate write connection that the agent never sees.
 from __future__ import annotations
 
 from contextlib import AsyncExitStack
-from typing import Any
+from typing import Protocol, runtime_checkable
 
 from harness.config import HarnessLimits, load_limits
 from harness.loop import LookupFactory, human_review_without_run, run_agent
@@ -20,8 +20,11 @@ from harness.prompts import load_prompt
 from harness.trace import CaseResult
 
 
-def _no_lookup() -> Any:
-    return None
+@runtime_checkable
+class SupportsClose(Protocol):
+    """A lookup factory that holds resources (for example a database engine)."""
+
+    def close(self) -> None: ...
 
 
 async def run_case(
@@ -37,7 +40,12 @@ async def run_case(
 ) -> CaseResult:
     """Run one case end to end. A tools server that fails to start is human_review
     tool_failure with an empty trace. Configuration errors (unknown profile, missing prompt
-    file) raise, because they are setup mistakes, not case outcomes."""
+    file) raise, because they are setup mistakes, not case outcomes.
+
+    database_url is passed explicitly to the tools server and to the module's lookup factory
+    (DATABASE_URL in normal runs, TEST_DATABASE_URL in tests). Without a lookup_factory, the
+    module builds one from database_url and it is closed when the case ends; a factory passed
+    in belongs to the caller, who closes it."""
     limits = limits if limits is not None else load_limits()
     profile = get_profile(profile_name)
     adapter = adapter if adapter is not None else make_adapter(profile)
@@ -54,6 +62,10 @@ async def run_case(
             return human_review_without_run(
                 case_id, spec.name, "tool_failure", error_class=type(exc).__name__
             )
+        if lookup_factory is None:
+            lookup_factory = spec.make_lookup_factory(database_url)
+            if isinstance(lookup_factory, SupportsClose):
+                stack.callback(lookup_factory.close)
         return await run_agent(
             case_id=case_id,
             spec=spec,
@@ -62,6 +74,6 @@ async def run_case(
             tools=session,
             limits=limits,
             prompt=prompt,
-            verify_context_factory=lookup_factory or _no_lookup,
+            verify_context_factory=lookup_factory,
             keep_tool_content=keep_tool_content,
         )

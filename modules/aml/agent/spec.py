@@ -6,7 +6,13 @@ from pathlib import Path
 
 from harness.module_spec import ModuleSpec
 from harness.prompts import PromptRef, load_prompt
+from modules.aml.agent.lookup import make_aml_lookup_factory
 from modules.aml.agent.models import AmlFindings, submit_findings_tool_spec
+from modules.aml.agent.verifiers import (
+    AlertMembershipVerifier,
+    ArithmeticVerifier,
+    CitationVerifier,
+)
 from tools.aml.caps import TOOL_TIMEOUT_SECONDS
 from tools.aml.launch import server_params
 
@@ -28,7 +34,9 @@ AML_SPEC = ModuleSpec(
     prompt=INVESTIGATOR_PROMPT,
     output_model=AmlFindings,
     submit_tool=submit_findings_tool_spec(),
-    verifiers=(),
+    # Cheapest first. All of them run on every output.
+    verifiers=(CitationVerifier(), ArithmeticVerifier(), AlertMembershipVerifier()),
     eval_dataset=Path("evals/datasets/aml_alerts_dev_v1.json"),
     build_case_message=build_case_message,
+    make_lookup_factory=make_aml_lookup_factory,
 )

@@ -60,7 +60,7 @@ from harness.trace import (
     ToolCallRecord,
     ToolResultContent,
 )
-from harness.verifiers.base import VerifierResult, VerifyContext
+from harness.verifiers.base import VerifierResult, VerifyContext, run_verifiers
 
 NO_ANSWER_REMINDER = PromptRef(Path("harness/prompts/no_answer_reminder_v1.md"), "v1")
 REPEAT_NOTE = "(repeat call: same result as before) "
@@ -414,8 +414,10 @@ class _Run:
         return [ToolResultBlock(tool_call_id=c.id, content=content, is_error=True) for c in submits]
 
     def _verify(self, output: BaseModel) -> list[VerifierResult]:
-        ctx = VerifyContext(seen_txn_ids=frozenset(self.seen), lookup=self.lookup_factory())
-        return [v.check(output, ctx) for v in self.spec.verifiers]
+        ctx = VerifyContext(
+            case_id=self.case_id, seen_txn_ids=frozenset(self.seen), lookup=self.lookup_factory()
+        )
+        return run_verifiers(self.spec.verifiers, output, ctx)
 
     # ---- result ---------------------------------------------------------------------------
 

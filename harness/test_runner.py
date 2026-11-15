@@ -29,6 +29,7 @@ def test_server_start_failure_is_tool_failure(tmp_path: Path) -> None:
         verifiers=(),
         eval_dataset=Path("unused.json"),
         build_case_message=lambda case_id: case_id,
+        make_lookup_factory=lambda url: lambda: None,
     )
     adapter = ScriptedAdapter([])
     result = asyncio.run(run_case("C-1", spec, "scripted", database_url="unused", adapter=adapter))

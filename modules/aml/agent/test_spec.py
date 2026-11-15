@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from harness.prompts import REPO_ROOT, load_prompt
+from modules.aml.agent.lookup import make_aml_lookup_factory
 from modules.aml.agent.models import SUBMIT_TOOL_NAME, AmlFindings
 from modules.aml.agent.spec import AML_SPEC, build_case_message
 from tools.aml.caps import TOOL_TIMEOUT_SECONDS
@@ -64,5 +65,10 @@ def test_spec_wiring() -> None:
     assert AML_SPEC.submit_tool.name == SUBMIT_TOOL_NAME
     assert AML_SPEC.server_params is server_params
     assert AML_SPEC.tool_timeout_seconds == TOOL_TIMEOUT_SECONDS
-    assert AML_SPEC.verifiers == ()
+    assert [v.name for v in AML_SPEC.verifiers] == [
+        "citations",
+        "arithmetic",
+        "alert_membership",
+    ]
+    assert AML_SPEC.make_lookup_factory is make_aml_lookup_factory
     assert AML_SPEC.eval_dataset == Path("evals/datasets/aml_alerts_dev_v1.json")
