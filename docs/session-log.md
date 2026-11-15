@@ -39,8 +39,9 @@ M2 core, following `docs/plans/agent-loop.md` (verified by a reviewer pass, owne
 3. Done: MCP client, ModuleSpec, prompt loader, AmlFindings model, investigator prompt v1.
 4. Done: agent loop (limits, single shared retry, stop reason table, run trace) and a minimal case runner.
 5. Done: verifier framework and AML citation, arithmetic and alert membership verifiers.
-6. In progress: label guard changes, datasets, runner, scorer, CI fast eval, decision note 0005.
-7. Next after that: first real scored run (needs `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` as a Codespaces secret and owner approval for spend), then 8 audit and run tables.
+6. Done: label guard changes, datasets (dev 98 alerts with 16 strict positives, heldout 73 with 23, smoke 10 with 3), eval runner, scorer, CI fast eval with the scripted adapter, decision note 0005. Runner and scorer refuse a non-local database unless `--allow-remote`.
+7. Next: first real scored run (needs `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` as a Codespaces secret and owner approval for spend), then 8 audit and run tables.
+Smoke set caveat: all 3 strict positives in the smoke set are in the late window, so it checks plumbing but cannot judge prompts on the honest early headline. Consider a smoke v2 with early positives before prompt work.
 Follow-ups noted by reviewers (safe today, all paths end in human review): verifiers run synchronously after the last wall clock check, so a slow database call is not covered by the time limit; a database error inside a verifier is reported as verifier_failed rather than an infrastructure reason; a close recommendation does not check the alert exists (alert_id must still equal the case id).
 Neon smoke test is not needed for this work: the local database, once loaded, has the same data. Do it before the hosted demo.
 Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
