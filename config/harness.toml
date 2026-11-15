@@ -1,0 +1,9 @@
+# Agent loop limits. Hitting any of them routes the case to human review.
+
+[limits]
+max_tool_steps = 12
+# Counts every processed token, cached ones included (input, cache read,
+# cache write and output), because every turn resends the growing conversation.
+max_total_tokens = 600000
+max_wall_seconds = 300
+max_output_tokens_per_call = 16000

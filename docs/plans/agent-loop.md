@@ -87,7 +87,7 @@ The loop, adapter, MCP client and runner take a ModuleSpec and hold no AML logic
 
 The final answer is a tool, `submit_findings`, whose input schema is the module's output model. This works the same on every provider. The harness validates the arguments with Pydantic.
 
-Limits (`config/harness.toml`): max 12 tool steps, a token budget per case (start 250,000 input plus output), a wall clock limit (start 300 s), max output tokens per call.
+Limits (`config/harness.toml`): max 12 tool steps, a token budget per case counting every processed token, cached ones included (start 600,000), a wall clock limit (start 300 s), max output tokens per call.
 
 Rules:
 - A step is one call to an investigation tool. `submit_findings` is not a step.
