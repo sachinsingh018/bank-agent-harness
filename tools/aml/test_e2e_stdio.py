@@ -24,6 +24,7 @@ from harness.db.models import Alert, AlertTransaction, Transaction
 from modules.aml.load_txns import load_txns
 from modules.aml.rules.registry import run_all
 from modules.aml.store import delete_alerts_for_version, write_alerts
+from tests_support.aml_db import local_url, pick_samples
 from tools.aml.caps import (
     MAX_COUNTERPARTIES,
     MAX_GRAPH_EDGES,
@@ -33,7 +34,7 @@ from tools.aml.caps import (
     MAX_ROWS,
     TOOL_TIMEOUT_SECONDS,
 )
-from tools.aml.conftest import ToolData, _local_url, pick_samples
+from tools.aml.conftest import ToolData
 from tools.aml.launch import REPO_ROOT, server_params
 from tools.aml.models import (
     AccountRef,
@@ -200,7 +201,7 @@ def e2e_data(local_engine: Engine) -> Iterator[ToolData]:
 @pytest.fixture(scope="module")
 def session(e2e_data: ToolData, local_engine: Engine) -> Session:
     small = pick_small_samples(local_engine, E2E_VERSION)
-    return asyncio.run(_drive(_local_url(), e2e_data.samples, small))
+    return asyncio.run(_drive(local_url(), e2e_data.samples, small))
 
 
 def _keys(value: Any) -> set[str]:
@@ -317,7 +318,7 @@ def test_server_process_exits_with_the_client(session: Session) -> None:
 
 def test_unreachable_database_gives_a_generic_internal_error(e2e_data: ToolData) -> None:
     # The same URL with a port nothing listens on: connection refused inside the server.
-    url = make_url(_local_url()).set(port=1).render_as_string(hide_password=False)
+    url = make_url(local_url()).set(port=1).render_as_string(hide_password=False)
 
     async def run() -> tuple[Call, str]:
         with tempfile.TemporaryFile("w+", encoding="utf-8") as errlog:

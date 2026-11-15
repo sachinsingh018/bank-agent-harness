@@ -35,7 +35,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy apps harness migrations data modules evals tools
+      - run: uv run mypy apps harness migrations data modules evals tools tests_support
       - name: Prepare local test database
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/harness

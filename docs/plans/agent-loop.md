@@ -157,7 +157,7 @@ A `Verifier` takes the output, the trace and a read-only lookup, and returns `Ve
 1. **Schema.** Pydantic validation of the submission (in the loop; shares the one retry).
 2. **Citations.** Every cited txn_id exists. Every cited amount equals the stored amount and currency on that side, compared as `Decimal` (so "100.0" equals "100.00"). Every cited txn_id must have appeared in a tool result during this run.
 3. **Arithmetic.** Every `sum` figure equals the exact `Decimal` sum of the cited transfers on that side and currency; every `count` equals the number of distinct cited transfers.
-4. **Module checks.** `NONE` only with `close`; `escalate` needs confidence of at least 0.5 and `close` below 0.5; `escalate` needs at least one claim citing a transfer that belongs to the alert.
+4. **Module checks.** `escalate` needs at least one claim citing a transfer that belongs to the alert (needs the database, so it is a verifier). The two rules that need no data, `NONE` only with `close`, and `escalate` needs confidence of at least 0.5 while `close` needs below 0.5, live in the `AmlFindings` model validator, so they fail as schema errors and share the one retry.
 
 **Lookup path.** In process, read-only, through the existing guarded door: `build_tool_engine(url)` and `open_readonly` from `tools/aml/db.py`, then the existing query functions (`get_transaction`, and `get_alert` plus `get_alert_transactions` paged to collect the alert's full transfer set). The URL is passed in explicitly by the runner (`DATABASE_URL` in normal runs, `TEST_DATABASE_URL` in tests), so tests never read `DATABASE_URL`. The verifiers never see labels.
 

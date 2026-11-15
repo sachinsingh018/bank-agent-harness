@@ -183,3 +183,61 @@ def test_rules_import_nothing_from_tools_or_the_apps() -> None:
         for name in _import_names(ast.parse(path.read_text(encoding="utf-8"))):
             assert not name.startswith("tools"), f"{path.name} imports {name}"
             assert not name.startswith("apps"), f"{path.name} imports {name}"
+
+
+AGENT_DIR = AML / "agent"
+PROMPTS_DIR = AML / "prompts"
+AGENT_FORBIDDEN_WORDS = (
+    *FORBIDDEN_WORDS,
+    "is_laundering",
+    "attempt_type",
+    "attempt_id",
+)
+
+
+def _agent_code() -> list[Path]:
+    return [
+        p
+        for p in sorted(AGENT_DIR.rglob("*.py"))
+        if not p.name.startswith("test_") and p.name != "conftest.py"
+    ]
+
+
+def test_agent_code_and_prompts_never_name_the_labels() -> None:
+    files = [*_agent_code(), *sorted(p for p in PROMPTS_DIR.rglob("*") if p.is_file())]
+    assert any(p.name == "models.py" for p in files)
+    assert any(p.name == "investigator_v1.md" for p in files)
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for word in AGENT_FORBIDDEN_WORDS:
+            assert word not in text, f"{path} mentions {word}"
+
+
+def test_agent_and_harness_import_nothing_from_evals() -> None:
+    harness_dir = AML.parent.parent / "harness"
+    harness_code = [
+        p
+        for p in sorted(harness_dir.rglob("*.py"))
+        if not p.name.startswith("test_") and p.name != "conftest.py"
+    ]
+    files = [*_agent_code(), *harness_code]
+    assert len(files) > 5
+    for path in files:
+        for name in _import_names(ast.parse(path.read_text(encoding="utf-8"))):
+            assert name != "evals" and not name.startswith("evals."), f"{path} imports {name}"
+
+
+def test_harness_code_never_names_the_labels() -> None:
+    """Plan section 9: all of harness/ except harness/db/, which defines the tables."""
+    harness_dir = AML.parent.parent / "harness"
+    db_dir = harness_dir / "db"
+    files = [
+        p
+        for p in sorted(harness_dir.rglob("*.py"))
+        if not p.name.startswith("test_") and p.name != "conftest.py" and db_dir not in p.parents
+    ]
+    assert any(p.name == "mcp_client.py" for p in files)
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for word in AGENT_FORBIDDEN_WORDS:
+            assert word not in text, f"{path} mentions {word}"
