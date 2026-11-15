@@ -44,6 +44,17 @@ jobs:
           uv run alembic upgrade head
           uv run python -m data.load_aml_slice load
       - run: uv run pytest
+      - name: Fast agent eval (scripted, no API key)
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/harness
+          PYTHONPATH: .
+        run: |
+          set -o pipefail
+          uv run python -m modules.aml.run_rules --ruleset v1
+          uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v1.json --profile scripted | tee runner.log
+          run_dir="$(tail -n 1 runner.log | sed -n 's/^run_dir=//p')"
+          test -n "$run_dir"
+          uv run python -m evals.aml_agent_score --run "$run_dir"
 
   web:
     runs-on: ubuntu-latest

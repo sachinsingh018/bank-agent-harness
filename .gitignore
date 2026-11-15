@@ -38,3 +38,6 @@ node_modules/
 
 # Local Claude Code history backup (private, never commit)
 .claude-home-backup/
+
+# Eval run outputs (results, manifests, scores)
+evals/runs/

@@ -15,7 +15,7 @@ LABEL_WORDS = (
 READERS = frozenset(
     {
         ROOT / "evals" / "aml_rules_score.py",
-        ROOT / "evals" / "aml_agent_score.py",  # step 6b, allowed before it exists
+        ROOT / "evals" / "aml_agent_score.py",
         ROOT / "evals" / "make_aml_datasets.py",
         ROOT / "data" / "load_aml_slice.py",  # the loader, the only writer
     }
@@ -66,7 +66,21 @@ def test_listed_readers_that_exist_are_the_known_ones() -> None:
     existing = {p for p in READERS if p.exists()}
     assert ROOT / "evals" / "aml_rules_score.py" in existing
     assert ROOT / "evals" / "make_aml_datasets.py" in existing
+    assert ROOT / "evals" / "aml_agent_score.py" in existing
     assert ROOT / "data" / "load_aml_slice.py" in existing
+
+
+def test_runner_and_scripted_policy_are_not_readers() -> None:
+    """The runner and the scripted policy feed the agent, so they must never name the labels."""
+    for name in ("run_aml_agent.py", "scripted_policy.py"):
+        path = ROOT / "evals" / name
+        assert path.exists() and path not in READERS, name
+        text = path.read_text(encoding="utf-8")
+        assert not any(w in text for w in LABEL_WORDS), name
+        imports = _import_names(path)
+        assert "evals.aml_rules_score" not in imports, name
+        assert "evals.make_aml_datasets" not in imports, name
+        assert "evals.aml_agent_score" not in imports, name
 
 
 def _agent_side_files() -> list[Path]:
