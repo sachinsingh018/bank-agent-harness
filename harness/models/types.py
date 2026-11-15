@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from harness.models.config import ModelProfile
 
+# Sent in place of an assistant turn that has no text and no tool calls, because
+# providers reject empty assistant content.
+EMPTY_TEXT_PLACEHOLDER = "(no text)"
+
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
