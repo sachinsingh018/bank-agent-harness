@@ -34,9 +34,14 @@ Update this file at the end of each working session. Do not track setup status h
 
 ## Next piece of work
 M2 core, following `docs/plans/agent-loop.md` (verified by a reviewer pass, owner said build after verification). Build order is in its section 13:
-1. Done: neutral model types, model profiles with exact cost, harness limits, scripted adapter (commit 82b3d7f).
-2. In progress: Anthropic and OpenRouter adapters (`anthropic==2.3.0`, `openai==3.42.0`).
-3. Then MCP client, ModuleSpec, prompt loader, AML output model and prompt v1; 4 the loop; 5 verifiers; 6 datasets, runner, scorer, guard changes, CI fast eval; 7 first real scored run (needs an API key and owner approval for spend); 8 audit and run tables.
+1. Done: neutral model types, model profiles with exact cost, harness limits, scripted adapter.
+2. Done: Anthropic and OpenRouter adapters (`anthropic==2.3.0`, `openai==3.42.0`).
+3. Done: MCP client, ModuleSpec, prompt loader, AmlFindings model, investigator prompt v1.
+4. Done: agent loop (limits, single shared retry, stop reason table, run trace) and a minimal case runner.
+5. Done: verifier framework and AML citation, arithmetic and alert membership verifiers.
+6. In progress: label guard changes, datasets, runner, scorer, CI fast eval, decision note 0005.
+7. Next after that: first real scored run (needs `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` as a Codespaces secret and owner approval for spend), then 8 audit and run tables.
+Follow-ups noted by reviewers (safe today, all paths end in human review): verifiers run synchronously after the last wall clock check, so a slow database call is not covered by the time limit; a database error inside a verifier is reported as verifier_failed rather than an infrastructure reason; a close recommendation does not check the alert exists (alert_id must still equal the case id).
 Neon smoke test is not needed for this work (local database has the same data). Do it before the hosted demo.
 Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
 
