@@ -1,0 +1,1515 @@
+{
+  "descriptions_version": "v1",
+  "tools": [
+    {
+      "description": "Returns the plain-English meaning, the thresholds and the roles of one detector (fan-out, fan-in, cycle, scatter-gather or gather-scatter). It needs no database and is free to call. Use it to understand why an alert fired and what its measured parameters mean. Nothing in the result is truncated.",
+      "input_schema": {
+        "properties": {
+          "detector": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Detector",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detector"
+        ],
+        "title": "describe_detectorArguments",
+        "type": "object"
+      },
+      "name": "describe_detector",
+      "output_schema": {
+        "properties": {
+          "detector": {
+            "title": "Detector",
+            "type": "string"
+          },
+          "meaning": {
+            "title": "Meaning",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "roles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "object"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Thresholds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "detector",
+          "meaning",
+          "thresholds",
+          "roles",
+          "notes"
+        ],
+        "title": "DetectorInfo",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns a short summary of one account: first and last activity, number of transfers sent and received, how many different counterparties it has on each side, the currencies and formats it uses, and its busiest day. It is cheap, so start here instead of reading the history. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "acct": {
+            "pattern": "^[A-Za-z0-9]{1,32}$",
+            "title": "Acct",
+            "type": "string"
+          },
+          "bank": {
+            "minimum": 0,
+            "title": "Bank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bank",
+          "acct"
+        ],
+        "title": "get_accountArguments",
+        "type": "object"
+      },
+      "name": "get_account",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "BusiestDay": {
+            "properties": {
+              "day": {
+                "format": "date",
+                "title": "Day",
+                "type": "string"
+              },
+              "transfers": {
+                "title": "Transfers",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "day",
+              "transfers"
+            ],
+            "title": "BusiestDay",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "account": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "busiest_day": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BusiestDay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Currencies",
+            "type": "array"
+          },
+          "distinct_counterparties_in": {
+            "title": "Distinct Counterparties In",
+            "type": "integer"
+          },
+          "distinct_counterparties_out": {
+            "title": "Distinct Counterparties Out",
+            "type": "integer"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "formats": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Formats",
+            "type": "array"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "self_transfers": {
+            "title": "Self Transfers",
+            "type": "integer"
+          },
+          "transfers_in": {
+            "title": "Transfers In",
+            "type": "integer"
+          },
+          "transfers_out": {
+            "title": "Transfers Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account",
+          "first_seen",
+          "last_seen",
+          "transfers_in",
+          "transfers_out",
+          "self_transfers",
+          "distinct_counterparties_in",
+          "distinct_counterparties_out",
+          "currencies",
+          "formats",
+          "busiest_day"
+        ],
+        "title": "AccountSummary",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns the transfers of one account in time order, oldest first. Direction is in, out or both, and start and end are an optional time window. Use it to read the detail behind a summary or a pattern. Prefer a narrow window: with no window you still get at most one capped page. Lists are capped: 25 rows by default and 50 at most per call, and the whole response is cut to 16,000 characters. Check truncated and next_cursor: if truncated is true more exists, and next_cursor (when present) is passed back as cursor to get the next page. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "acct": {
+            "pattern": "^[A-Za-z0-9]{1,32}$",
+            "title": "Acct",
+            "type": "string"
+          },
+          "bank": {
+            "minimum": 0,
+            "title": "Bank",
+            "type": "integer"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "direction": {
+            "default": "both",
+            "enum": [
+              "in",
+              "out",
+              "both"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End"
+          },
+          "limit": {
+            "default": 25,
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start"
+          }
+        },
+        "required": [
+          "bank",
+          "acct"
+        ],
+        "title": "get_account_historyArguments",
+        "type": "object"
+      },
+      "name": "get_account_history",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "Money": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "value": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "currency"
+            ],
+            "title": "Money",
+            "type": "object"
+          },
+          "TransferRecord": {
+            "properties": {
+              "amount_paid": {
+                "$ref": "#/$defs/Money"
+              },
+              "amount_received": {
+                "$ref": "#/$defs/Money"
+              },
+              "format": {
+                "title": "Format",
+                "type": "string"
+              },
+              "from_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "to_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "ts": {
+                "format": "date-time",
+                "title": "Ts",
+                "type": "string"
+              },
+              "txn_id": {
+                "title": "Txn Id",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "txn_id",
+              "ts",
+              "from_account",
+              "to_account",
+              "amount_paid",
+              "amount_received",
+              "format"
+            ],
+            "title": "TransferRecord",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/TransferRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Cursor"
+          },
+          "returned": {
+            "title": "Returned",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "total_count",
+          "returned",
+          "truncated",
+          "items"
+        ],
+        "title": "TransferPage",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns one alert: the detector that fired, the ruleset version, the anchor account, the time window, the transfer count, a one sentence summary and the measured parameters, plus the first 25 of its transfers with their role in the alert and the total count. Start here: you are given an alert id and this is the entry point. The first page always holds up to 25 transfers (get_alert_transactions takes a limit of up to 50 per call), and the whole response is cut to 16,000 characters. The paging fields total_count, returned, truncated and next_cursor are inside the transfers object: if truncated is true more transfers exist, and you get the next page by calling get_alert_transactions with the same alert_id and that next_cursor as cursor. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "alert_id": {
+            "pattern": "^AL-[0-9a-f]{12}$",
+            "title": "Alert Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alert_id"
+        ],
+        "title": "get_alertArguments",
+        "type": "object"
+      },
+      "name": "get_alert",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "AlertTransfer": {
+            "properties": {
+              "amount_paid": {
+                "$ref": "#/$defs/Money"
+              },
+              "amount_received": {
+                "$ref": "#/$defs/Money"
+              },
+              "format": {
+                "title": "Format",
+                "type": "string"
+              },
+              "from_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              },
+              "to_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "ts": {
+                "format": "date-time",
+                "title": "Ts",
+                "type": "string"
+              },
+              "txn_id": {
+                "title": "Txn Id",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "txn_id",
+              "ts",
+              "from_account",
+              "to_account",
+              "amount_paid",
+              "amount_received",
+              "format",
+              "role"
+            ],
+            "title": "AlertTransfer",
+            "type": "object"
+          },
+          "AlertTransferPage": {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/$defs/AlertTransfer"
+                },
+                "title": "Items",
+                "type": "array"
+              },
+              "next_cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Next Cursor"
+              },
+              "returned": {
+                "title": "Returned",
+                "type": "integer"
+              },
+              "total_count": {
+                "title": "Total Count",
+                "type": "integer"
+              },
+              "truncated": {
+                "title": "Truncated",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "total_count",
+              "returned",
+              "truncated",
+              "items"
+            ],
+            "title": "AlertTransferPage",
+            "type": "object"
+          },
+          "Money": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "value": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "currency"
+            ],
+            "title": "Money",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "account_count": {
+            "title": "Account Count",
+            "type": "integer"
+          },
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AccountRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detector": {
+            "title": "Detector",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "ruleset_version": {
+            "title": "Ruleset Version",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "transfers": {
+            "$ref": "#/$defs/AlertTransferPage"
+          },
+          "txn_count": {
+            "title": "Txn Count",
+            "type": "integer"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alert_id",
+          "ruleset_version",
+          "detector",
+          "anchor",
+          "window_start",
+          "window_end",
+          "txn_count",
+          "account_count",
+          "params",
+          "summary",
+          "transfers"
+        ],
+        "title": "AlertRecord",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns the transfers of one alert a page at a time, each with its role in the alert, in time order. Use it only when get_alert says the alert has more transfers than it showed. Lists are capped: 25 rows by default and 50 at most per call, and the whole response is cut to 16,000 characters. Check truncated and next_cursor: if truncated is true more exists, and next_cursor (when present) is passed back as cursor to get the next page. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "alert_id": {
+            "pattern": "^AL-[0-9a-f]{12}$",
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 25,
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "alert_id"
+        ],
+        "title": "get_alert_transactionsArguments",
+        "type": "object"
+      },
+      "name": "get_alert_transactions",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "AlertTransfer": {
+            "properties": {
+              "amount_paid": {
+                "$ref": "#/$defs/Money"
+              },
+              "amount_received": {
+                "$ref": "#/$defs/Money"
+              },
+              "format": {
+                "title": "Format",
+                "type": "string"
+              },
+              "from_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "role": {
+                "title": "Role",
+                "type": "string"
+              },
+              "to_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "ts": {
+                "format": "date-time",
+                "title": "Ts",
+                "type": "string"
+              },
+              "txn_id": {
+                "title": "Txn Id",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "txn_id",
+              "ts",
+              "from_account",
+              "to_account",
+              "amount_paid",
+              "amount_received",
+              "format",
+              "role"
+            ],
+            "title": "AlertTransfer",
+            "type": "object"
+          },
+          "Money": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "value": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "currency"
+            ],
+            "title": "Money",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/AlertTransfer"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Cursor"
+          },
+          "returned": {
+            "title": "Returned",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "total_count",
+          "returned",
+          "truncated",
+          "items"
+        ],
+        "title": "AlertTransferPage",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns the accounts this account dealt with, grouped: per counterparty the number of transfers, first and last date, and totals per currency. Direction is in, out or both, with an optional time window. Only the top 20 counterparties by number of transfers are returned, with the full count of counterparties in total_count, so check truncated. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "acct": {
+            "pattern": "^[A-Za-z0-9]{1,32}$",
+            "title": "Acct",
+            "type": "string"
+          },
+          "bank": {
+            "minimum": 0,
+            "title": "Bank",
+            "type": "integer"
+          },
+          "direction": {
+            "default": "both",
+            "enum": [
+              "in",
+              "out",
+              "both"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start"
+          }
+        },
+        "required": [
+          "bank",
+          "acct"
+        ],
+        "title": "get_counterpartiesArguments",
+        "type": "object"
+      },
+      "name": "get_counterparties",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "CounterpartyRecord": {
+            "properties": {
+              "account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "first_seen": {
+                "format": "date-time",
+                "title": "First Seen",
+                "type": "string"
+              },
+              "last_seen": {
+                "format": "date-time",
+                "title": "Last Seen",
+                "type": "string"
+              },
+              "received_totals_by_currency": {
+                "items": {
+                  "$ref": "#/$defs/Money"
+                },
+                "title": "Received Totals By Currency",
+                "type": "array"
+              },
+              "received_transfers": {
+                "title": "Received Transfers",
+                "type": "integer"
+              },
+              "sent_totals_by_currency": {
+                "items": {
+                  "$ref": "#/$defs/Money"
+                },
+                "title": "Sent Totals By Currency",
+                "type": "array"
+              },
+              "sent_transfers": {
+                "title": "Sent Transfers",
+                "type": "integer"
+              },
+              "transfers": {
+                "title": "Transfers",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "account",
+              "transfers",
+              "first_seen",
+              "last_seen",
+              "sent_transfers",
+              "received_transfers",
+              "sent_totals_by_currency",
+              "received_totals_by_currency"
+            ],
+            "title": "CounterpartyRecord",
+            "type": "object"
+          },
+          "Money": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "value": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "currency"
+            ],
+            "title": "Money",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "account": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/$defs/CounterpartyRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "returned": {
+            "title": "Returned",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "items",
+          "total_count",
+          "returned",
+          "truncated"
+        ],
+        "title": "CounterpartiesResult",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns one transfer by its txn_id: time, sender and receiver accounts, amount paid and amount received with currencies, and the payment format. Use it to double check a number or an id before you cite it in your findings. It is cheap and returns a single record. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "txn_id": {
+            "minimum": 1,
+            "title": "Txn Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "txn_id"
+        ],
+        "title": "get_transactionArguments",
+        "type": "object"
+      },
+      "name": "get_transaction",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "Money": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "value": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "currency"
+            ],
+            "title": "Money",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "amount_paid": {
+            "$ref": "#/$defs/Money"
+          },
+          "amount_received": {
+            "$ref": "#/$defs/Money"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "from_account": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "to_account": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "txn_id": {
+            "title": "Txn Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "txn_id",
+          "ts",
+          "from_account",
+          "to_account",
+          "amount_paid",
+          "amount_received",
+          "format"
+        ],
+        "title": "TransferRecord",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns the neighbourhood around an account: accounts as nodes and transfers as edges. It looks 1 hop out by default and at most 2 hops, with an optional time window. The graph is capped at 40 accounts and 120 transfers, busiest first, and the totals found are reported, so check truncated. Use it to see who is connected to whom. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "acct": {
+            "pattern": "^[A-Za-z0-9]{1,32}$",
+            "title": "Acct",
+            "type": "string"
+          },
+          "bank": {
+            "minimum": 0,
+            "title": "Bank",
+            "type": "integer"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End"
+          },
+          "hops": {
+            "default": 1,
+            "maximum": 2,
+            "minimum": 1,
+            "title": "Hops",
+            "type": "integer"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start"
+          }
+        },
+        "required": [
+          "bank",
+          "acct"
+        ],
+        "title": "get_transaction_graphArguments",
+        "type": "object"
+      },
+      "name": "get_transaction_graph",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "GraphNode": {
+            "description": "An account in the neighbourhood. The counts cover all of its transfers with other\naccounts in the window, not only the ones drawn as edges.",
+            "properties": {
+              "account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "transfers_in": {
+                "title": "Transfers In",
+                "type": "integer"
+              },
+              "transfers_out": {
+                "title": "Transfers Out",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "account",
+              "transfers_in",
+              "transfers_out"
+            ],
+            "title": "GraphNode",
+            "type": "object"
+          },
+          "Money": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "value": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "currency"
+            ],
+            "title": "Money",
+            "type": "object"
+          },
+          "TransferRecord": {
+            "properties": {
+              "amount_paid": {
+                "$ref": "#/$defs/Money"
+              },
+              "amount_received": {
+                "$ref": "#/$defs/Money"
+              },
+              "format": {
+                "title": "Format",
+                "type": "string"
+              },
+              "from_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "to_account": {
+                "$ref": "#/$defs/AccountRef"
+              },
+              "ts": {
+                "format": "date-time",
+                "title": "Ts",
+                "type": "string"
+              },
+              "txn_id": {
+                "title": "Txn Id",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "txn_id",
+              "ts",
+              "from_account",
+              "to_account",
+              "amount_paid",
+              "amount_received",
+              "format"
+            ],
+            "title": "TransferRecord",
+            "type": "object"
+          }
+        },
+        "description": "Accounts as nodes and transfers between kept accounts as edges. The totals count\neverything found, so a cut result is never silent.",
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/$defs/TransferRecord"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "hops": {
+            "title": "Hops",
+            "type": "integer"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/$defs/GraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "root": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "total_edges_found": {
+            "title": "Total Edges Found",
+            "type": "integer"
+          },
+          "total_nodes_found": {
+            "title": "Total Nodes Found",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "root",
+          "hops",
+          "nodes",
+          "edges",
+          "total_nodes_found",
+          "total_edges_found",
+          "truncated",
+          "window_start",
+          "window_end"
+        ],
+        "title": "GraphResult",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Runs one of the same detectors that create alerts (fan-out, fan-in, cycle, scatter-gather, gather-scatter) on the transfers around one account and returns what it finds, with transfer ids. Because it uses the same detectors as the alerts, it is evidence about the surrounding accounts and not an independent opinion. It only sees the immediate surroundings of the account, so loops of more than 4 accounts may be missed. At most 2,000 transfers are loaded: a busier neighbourhood gives a too_large error, so narrow the window and try again. Matches can be truncated, so check truncated. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "acct": {
+            "pattern": "^[A-Za-z0-9]{1,32}$",
+            "title": "Acct",
+            "type": "string"
+          },
+          "bank": {
+            "minimum": 0,
+            "title": "Bank",
+            "type": "integer"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End"
+          },
+          "pattern": {
+            "enum": [
+              "fan-out",
+              "fan-in",
+              "cycle",
+              "scatter-gather",
+              "gather-scatter"
+            ],
+            "title": "Pattern",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start"
+          }
+        },
+        "required": [
+          "pattern",
+          "bank",
+          "acct"
+        ],
+        "title": "run_pattern_checkArguments",
+        "type": "object"
+      },
+      "name": "run_pattern_check",
+      "output_schema": {
+        "$defs": {
+          "AccountRef": {
+            "properties": {
+              "acct": {
+                "title": "Acct",
+                "type": "string"
+              },
+              "bank": {
+                "title": "Bank",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bank",
+              "acct"
+            ],
+            "title": "AccountRef",
+            "type": "object"
+          },
+          "PatternMatch": {
+            "properties": {
+              "anchor": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AccountRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "detector": {
+                "title": "Detector",
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": true,
+                "title": "Params",
+                "type": "object"
+              },
+              "summary": {
+                "title": "Summary",
+                "type": "string"
+              },
+              "txn_count": {
+                "title": "Txn Count",
+                "type": "integer"
+              },
+              "txn_ids": {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 50,
+                "title": "Txn Ids",
+                "type": "array"
+              },
+              "window_end": {
+                "format": "date-time",
+                "title": "Window End",
+                "type": "string"
+              },
+              "window_start": {
+                "format": "date-time",
+                "title": "Window Start",
+                "type": "string"
+              }
+            },
+            "required": [
+              "detector",
+              "anchor",
+              "window_start",
+              "window_end",
+              "txn_ids",
+              "txn_count",
+              "summary",
+              "params"
+            ],
+            "title": "PatternMatch",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "account": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/$defs/PatternMatch"
+            },
+            "maxItems": 10,
+            "title": "Matches",
+            "type": "array"
+          },
+          "neighbourhood_hops": {
+            "title": "Neighbourhood Hops",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          },
+          "total_matches": {
+            "title": "Total Matches",
+            "type": "integer"
+          },
+          "transfers_examined": {
+            "title": "Transfers Examined",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pattern",
+          "account",
+          "transfers_examined",
+          "neighbourhood_hops",
+          "matches",
+          "total_matches",
+          "truncated",
+          "note"
+        ],
+        "title": "PatternCheckResult",
+        "type": "object"
+      }
+    }
+  ]
+}

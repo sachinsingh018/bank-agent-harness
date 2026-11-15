@@ -1,5 +1,6 @@
-"""The query functions with sample-argument builders. Tests iterate over this list, and a test
-fails if a public query function is missing from it."""
+"""The one table of AML tools: name, input and output models, query function and sample-argument
+builder. The MCP server and the tests both use it. A test fails if a public query function is
+missing from it, or if a tool is missing from the server or the descriptions file."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,14 +14,23 @@ from tools.aml.models import (
     AccountHistoryInput,
     AccountInput,
     AccountRef,
+    AccountSummary,
     AlertIdInput,
+    AlertRecord,
     AlertTransactionsInput,
+    AlertTransferPage,
     CounterpartiesInput,
+    CounterpartiesResult,
     DescribeDetectorInput,
+    DetectorInfo,
     GraphInput,
+    GraphResult,
     PatternCheckInput,
+    PatternCheckResult,
     PatternName,
     TransactionInput,
+    TransferPage,
+    TransferRecord,
 )
 
 
@@ -40,6 +50,8 @@ class QueryEntry:
     name: str
     func: Callable[..., BaseModel]
     build_args: Callable[[Samples], list[BaseModel]]
+    input_model: type[BaseModel]
+    output_model: type[BaseModel]
     # describe_detector needs no database, so it takes only its input.
     needs_connection: bool = True
 
@@ -104,15 +116,52 @@ def _detector_args(s: Samples) -> list[BaseModel]:
 
 
 QUERY_REGISTRY: tuple[QueryEntry, ...] = (
-    QueryEntry("get_alert", queries.get_alert, _alert_args),
-    QueryEntry("get_alert_transactions", queries.get_alert_transactions, _alert_txn_args),
-    QueryEntry("get_transaction", queries.get_transaction, _txn_args),
-    QueryEntry("get_account", queries.get_account, _account_args),
-    QueryEntry("get_account_history", queries.get_account_history, _history_args),
-    QueryEntry("get_counterparties", queries.get_counterparties, _counterparty_args),
-    QueryEntry("get_transaction_graph", queries.get_transaction_graph, _graph_args),
-    QueryEntry("run_pattern_check", patterns.run_pattern_check, _pattern_args),
+    QueryEntry("get_alert", queries.get_alert, _alert_args, AlertIdInput, AlertRecord),
     QueryEntry(
-        "describe_detector", detector_docs.describe_detector, _detector_args, needs_connection=False
+        "get_alert_transactions",
+        queries.get_alert_transactions,
+        _alert_txn_args,
+        AlertTransactionsInput,
+        AlertTransferPage,
+    ),
+    QueryEntry(
+        "get_transaction", queries.get_transaction, _txn_args, TransactionInput, TransferRecord
+    ),
+    QueryEntry("get_account", queries.get_account, _account_args, AccountInput, AccountSummary),
+    QueryEntry(
+        "get_account_history",
+        queries.get_account_history,
+        _history_args,
+        AccountHistoryInput,
+        TransferPage,
+    ),
+    QueryEntry(
+        "get_counterparties",
+        queries.get_counterparties,
+        _counterparty_args,
+        CounterpartiesInput,
+        CounterpartiesResult,
+    ),
+    QueryEntry(
+        "get_transaction_graph",
+        queries.get_transaction_graph,
+        _graph_args,
+        GraphInput,
+        GraphResult,
+    ),
+    QueryEntry(
+        "run_pattern_check",
+        patterns.run_pattern_check,
+        _pattern_args,
+        PatternCheckInput,
+        PatternCheckResult,
+    ),
+    QueryEntry(
+        "describe_detector",
+        detector_docs.describe_detector,
+        _detector_args,
+        DescribeDetectorInput,
+        DetectorInfo,
+        needs_connection=False,
     ),
 )

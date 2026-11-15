@@ -245,7 +245,17 @@ PER_FILE_FROM_IMPORTS: dict[str, dict[str, set[str]]] = {
         "modules.aml.rules.scatter_gather": {"scatter_gather"},
         "modules.aml.rules.gather_scatter": {"gather_scatter"},
     },
+    # The ONE file that may import the MCP server class. The tool engine is passed around as
+    # Any here, so no sqlalchemy import is needed.
+    "aml/server.py": {
+        "mcp.server.mcpserver": {"MCPServer"},
+        "mcp.server.mcpserver.exceptions": {"ToolError"},
+    },
+    # The ONE file that may import the MCP launch parameters type.
+    "aml/launch.py": {"mcp": {"StdioServerParameters"}},
 }
+# Plain "import x" of a denied standard library module, allowed for one file only.
+PER_FILE_PLAIN_IMPORTS: dict[str, set[str]] = {"aml/launch.py": {"sys"}}
 
 
 def _is_free(module: str) -> bool:
@@ -258,10 +268,15 @@ def import_violations(source: str, rel: str) -> list[str]:
     allowed = {k: set(v) for k, v in COMMON_FROM_IMPORTS.items()}
     for module, names in PER_FILE_FROM_IMPORTS.get(rel, {}).items():
         allowed.setdefault(module, set()).update(names)
+    plain_ok = PER_FILE_PLAIN_IMPORTS.get(rel, set())
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
-            found.extend(f"import {a.name}" for a in node.names if not _is_free(a.name))
+            found.extend(
+                f"import {a.name}"
+                for a in node.names
+                if not _is_free(a.name) and a.name not in plain_ok
+            )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
             if node.level or not module:
@@ -336,6 +351,49 @@ def test_patterns_py_may_import_the_detectors() -> None:
 )
 def test_patterns_py_still_refuses_everything_else_in_modules(source: str) -> None:
     assert import_violations(source, "aml/patterns.py")
+
+
+def _imports_mcp(source: str) -> bool:
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            if any(a.name == "mcp" or a.name.startswith("mcp.") for a in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "mcp" or (node.module or "").startswith("mcp."):
+                return True
+    return False
+
+
+def test_only_server_and_launch_import_mcp() -> None:
+    importers = [
+        p.relative_to(TOOLS).as_posix()
+        for p in _tool_files()
+        if _imports_mcp(p.read_text(encoding="utf-8"))
+    ]
+    assert importers == ["aml/launch.py", "aml/server.py"]
+
+
+@pytest.mark.parametrize("rel", ["aml/queries.py", "aml/db.py", "aml/patterns.py"])
+def test_other_files_may_not_import_mcp_or_sys(rel: str) -> None:
+    assert import_violations("from mcp import StdioServerParameters", rel)
+    assert import_violations("from mcp.server.mcpserver import MCPServer", rel)
+    assert import_violations("import mcp", rel)
+    assert import_violations("import sys", rel)
+
+
+def test_server_and_launch_imports_are_exactly_their_allowance() -> None:
+    server_ok = "from mcp.server.mcpserver import MCPServer\nimport logging, time, asyncio\n"
+    assert not import_violations(server_ok, "aml/server.py")
+    assert import_violations("from mcp import Client", "aml/server.py")
+    assert import_violations("from mcp.server.mcpserver import Context", "aml/server.py")
+    assert import_violations("import sys", "aml/server.py")
+    assert import_violations("import os", "aml/server.py")
+    assert not import_violations(
+        "from mcp import StdioServerParameters\nimport sys", "aml/launch.py"
+    )
+    assert import_violations("from mcp import Client", "aml/launch.py")
+    assert import_violations("import os", "aml/launch.py")
+    assert import_violations("from mcp.server.mcpserver import MCPServer", "aml/launch.py")
 
 
 def test_per_file_import_allowlist_names_only_existing_files() -> None:
@@ -498,3 +556,36 @@ def test_ast_scanner_accepts_clean_code() -> None:
 def test_text_scanner_flags_get_raw_connection() -> None:
     # "raw_connection" is matched as a substring, so get_raw_connection is covered too.
     assert FORBIDDEN_PATTERNS["raw_connection"].search("conn.get_raw_connection()")
+
+
+# ------------------------------------------------------------------ no printing
+# Stdout is the MCP protocol channel, so no non-test file under tools/ may call print.
+
+
+def print_calls(source: str) -> list[int]:
+    return [
+        node.lineno
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and _ident(node.func) == "print"
+    ]
+
+
+def test_no_print_calls_in_tools_code() -> None:
+    for path in _tool_files():
+        found = print_calls(path.read_text(encoding="utf-8"))
+        assert not found, f"{path.name} calls print on lines {found}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["print('x')", "def f():\n    print(a, file=out)", "builtins.print(1)", "x = print"],
+)
+def test_print_scanner_flags_print(source: str) -> None:
+    if source == "x = print":
+        assert not print_calls(source)  # a bare name is not a call
+    else:
+        assert print_calls(source)
+
+
+def test_print_scanner_accepts_clean_code() -> None:
+    assert print_calls("log.info('x')\nsys.stderr.write('y')") == []

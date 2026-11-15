@@ -10,6 +10,7 @@ dependencies = [
   "sqlalchemy>=2",
   "psycopg[binary]",
   "alembic",
+  "mcp==2.3.0",
 ]
 
 [dependency-groups]
@@ -17,6 +18,9 @@ dev = ["pytest", "ruff", "mypy", "pre-commit", "httpx"]
 
 [tool.uv]
 package = false
+# Keep brand new releases out: sse-starlette 3.7.0 was under two weeks old when mcp was added.
+# Raise or remove this once the newer version has aged.
+constraint-dependencies = ["sse-starlette<3.7"]
 
 [tool.ruff]
 line-length = 100
