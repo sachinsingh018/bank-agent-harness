@@ -25,6 +25,8 @@ Built in a Kaggle notebook (heavy data work stays out of Codespaces) from the HI
 
 The result is 25,493 rows, of which 522 are laundering.
 
+Known artifact: normal traffic almost stops after 2022-09-10, while laundering schemes run on to 2022-09-17, so 126 of the 203 transfers dated 11 to 17 September are laundering. Late dates (and late transfer ids, which follow time order) therefore give away the answer. See docs/decisions/0006-late-date-leak.md for how evals handle it.
+
 ### Columns
 
 | Column | Meaning |

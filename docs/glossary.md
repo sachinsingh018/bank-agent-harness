@@ -20,3 +20,7 @@ Finance terms, added as they come up.
 - **Stack (laundering pattern):** money passes quickly through a chain of accounts, hiding where it started.
 - **Structuring:** making several transfers just under a reporting limit (US 10,000) to avoid being reported.
 - **Layering:** moving money through many accounts to hide its origin.
+- **SAR (Suspicious Activity Report):** the report a bank files with the regulator when activity looks like laundering. In this project "escalate" means the agent recommends a SAR review; a human decides.
+- **Calibration:** whether a stated confidence matches reality. If the agent says 0.8 on many alerts, about 80% of them should be real laundering.
+- **ECE (expected calibration error):** one number for calibration: group answers by confidence, compare each group's average confidence with how often it was right, and average the gaps. Lower is better.
+- **Data leak (in evaluation):** a clue in the test data that gives away the answer for a reason that would not exist in real life, so scores look better than they are.
