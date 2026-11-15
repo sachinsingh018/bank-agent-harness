@@ -7,7 +7,8 @@ Update this file at the end of each working session. Do not track setup status h
 ## Where the work stands
 - M1 (Data) is done. The AML slice is loaded into Neon and verified (25,493 transfers, 522 laundering, 64 schemes).
 - The AML rules layer is done and verified on Neon: five detectors (fan-out, fan-in, cycle, scatter-gather, gather-scatter), 171 v1 alerts stored, and the v1 baseline in `evals/baselines/aml_rules_v1.json`. The Neon run produced a byte-identical baseline to the local one.
-- Plans: `docs/plans/load-aml-slice.md`, `docs/plans/aml-rules-layer.md`.
+- M2 first piece is done: the read-only AML MCP tools server (`tools/aml/`). Nine tools (eight database tools plus `describe_detector`), the runtime SQL guard, label guard tests, caps, keyset paging, a schema snapshot and an end-to-end stdio test. Built in the three commits the plan laid out, pushed, CI green. Not yet smoke tested against Neon.
+- Plans: `docs/plans/load-aml-slice.md`, `docs/plans/aml-rules-layer.md`, `docs/plans/mcp-tools.md`.
 - Stack in place: alerts and labels live in separate tables. Only `evals/aml_rules_score.py` reads labels, and guard tests fail if other code does.
 
 ## How we work
@@ -16,7 +17,7 @@ Update this file at the end of each working session. Do not track setup status h
 - Never commit secrets. The repo is public.
 
 ## Things learned
-- A rebuild wiped `~/.claude` once. History now persists through the `claude-home` volume. A Codespace delete would still lose it.
+- A rebuild wiped `~/.claude` once. History was meant to persist through the `claude-home` volume, but on 2026-11-15 the previous chat history was gone again after the Codespace stopped. Rely on this log, not chat history.
 - Auto mode blocked deleting git hooks. Installing git-lfs fixed the push instead.
 - CI mypy covers `apps harness migrations data modules evals`. Add `tools` when it gets Python files (mypy errors on empty directories).
 - A pre-commit hook that edits a file (whitespace, end of file) stops the commit. Re-stage and commit again.
@@ -29,7 +30,9 @@ Update this file at the end of each working session. Do not track setup status h
 - The pre-commit large-file hook (500 KB) exempts only `data/aml_slice_hi_small.csv` (decisions/0003).
 
 ## Next piece of work
-M2, the agent harness. First piece: the read-only MCP tools the agent uses to investigate an alert (get_alert, get_account_history, get_counterparties and a few more). Tools read only transactions, accounts, alerts and alert_transactions, never the labels table. A plan goes in `docs/plans/mcp-tools.md` and needs owner approval before any code. Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
+1. Read-only smoke test of the MCP tools against Neon (needs owner approval, goes through the redaction filter).
+2. Plan the agent loop, model adapter and MCP client in `docs/plans/agent-loop.md` (section 5 of the MCP tools plan sketches how they connect). Owner approval before code.
+Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
 
 ## Future hardening (deferred)
 - Give the MCP tools their own read-only Postgres role that can select only from transactions, accounts, alerts and alert_transactions. It would make the labels guard hold at the database level too. It needs a new connection string, so it is deferred. Until then the guard is code, a runtime SQL check and tests (docs/plans/mcp-tools.md).
