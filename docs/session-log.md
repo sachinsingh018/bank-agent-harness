@@ -5,13 +5,12 @@ Start here in a new chat. This is a summary, not a raw transcript. The repo is p
 Update this file at the end of each working session. Do not track setup status here: hosting, database and secrets are managed outside the repo.
 
 ## Current state (2026-11-16)
-- M2 steps 1 to 6 and 8 are built and pushed. Step 7 has started: the first real run is done (below). M2 is done once a real scored run on the dev set exists.
-- `OPENROUTER_API_KEY` is set as a Codespaces secret. It is on OpenRouter's free tier: 50 free-model requests per day (a case needs about 6 to 13 model calls), and free models are slow (about 25 s per call).
-- `openrouter-free-dev` now uses `nvidia/nemotron-3-ultra-550b-a55b:free`.
-- First real run `evals/runs/20261116T014628Z-c9d334` (3 smoke v2 alerts, local database, recorded, chain ok): 1 proposed (a real laundering alert, correctly escalated, but typology wrong), 1 human_review `limit_output` (the model used all 8000 output tokens before answering), 1 human_review `verifier_failed` (wrongly escalated a non-laundering alert; its stated sums were wrong, so the arithmetic verifier caught it). Both submissions first failed the schema (an empty `txn_ids` list on a claim; 21 amounts where the cap is 20) and used the retry.
-- Proposed fixes, waiting for the owner: prompt v2 that states the schema limits and asks for fewer, cheaper tool calls; a read-only `sum_transfers` tool so the model never adds decimals itself; a higher output token cap for this profile. Every change is compared against v1 on the same fixed alerts.
-- Full transcript of the 2026-11-15/16 build session: `.claude-home-backup/transcripts/2026-11-16-m2-build.jsonl` (gitignored, local only).
-- Working style: one builder subagent per step, then tests plus an independent reviewer subagent, fix findings, commit. Ask the owner before every push.
+- M2 is functionally complete: steps 1 to 8 of `docs/plans/agent-loop.md` built, plus the first real model runs (step 7) on the free OpenRouter profile (`nvidia/nemotron-3-ultra-550b-a55b:free`, free tier 50 requests a day, about 8 requests per alert).
+- Run 20261116T014628Z-c9d334 (prompt v1, 3 smoke alerts): 1 proposed, 1 `limit_output` (reasoning model spent all 8,000 output tokens thinking), 1 `verifier_failed` (wrong sums caught by the arithmetic verifier).
+- Fixes in commit 96205bd: output allowance 16,000, new read-only `sum_transfers` tool (exact per-currency totals), prompt v2 (use sum_transfers, answer limits stated).
+- Run 20261116T020950Z-beb465 (prompt v2, same 3 alerts): 3 of 3 proposed, no arithmetic failures, grounding 1.0. But it escalated all 3 with confidence 0.75 to 0.9 while only 1 is a real positive (precision 0.333, same as the rules baseline), typology wrong on the positive, and every first answer still broke a schema cap (20 amounts per claim or an empty claim), spending the retry. n = 3, so treat as a smoke check only.
+- Next ideas, each to be compared on dev alerts: a stronger model (Anthropic key or paid OpenRouter), prompt v3 that says most alerts are false positives and asks for evidence against laundering before escalating (domain knowledge, not leakage), and either raise the 20 amounts cap or tell the model to cite amounts only for transfers it quotes. Bigger runs need more requests: buying 10 USD of OpenRouter credit raises the free limit to 1,000 a day.
+- Transcript backups: `.claude-home-backup/transcripts/` (gitignored). Working style: builder, then tests plus independent reviewer, fix, commit; ask before every push.
 
 ## Where the work stands
 - M1 (Data) is done. The AML slice is loaded into Neon and verified (25,493 transfers, 522 laundering, 64 schemes).
