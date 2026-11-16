@@ -9,7 +9,8 @@
   },
   "forwardPorts": [8000, 3000, 5432],
   "containerEnv": {
-    "DATABASE_URL": "postgresql+psycopg://postgres:postgres@db:5432/harness"
+    "DATABASE_URL": "postgresql+psycopg://postgres:postgres@db:5432/harness",
+    "HARNESS_WRITE_DATABASE_URL": "postgresql+psycopg://postgres:postgres@db:5432/harness"
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "customizations": {

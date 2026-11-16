@@ -1,11 +1,14 @@
 """CaseRunner: set up one case run (limits, model, prompt, tools server) and run the loop.
 
-This step writes nothing. Run records and the audit log come in the last step of M2, through
-a separate write connection that the agent never sees.
+The runner itself writes nothing and imports no database code. Recording is opt in: a caller
+(the eval runner) may pass a recorder callable that writes the finished CaseResult through
+the separate write connection in harness/records.py, which the agent never sees.
 """
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable
 from contextlib import AsyncExitStack
 from typing import Protocol, runtime_checkable
 
@@ -37,6 +40,7 @@ async def run_case(
     adapter: ModelAdapter | None = None,
     lookup_factory: LookupFactory | None = None,
     keep_tool_content: bool = True,
+    recorder: Callable[[CaseResult], str] | None = None,
 ) -> CaseResult:
     """Run one case end to end. A tools server that fails to start is human_review
     tool_failure with an empty trace. Configuration errors (unknown profile, missing prompt
@@ -45,7 +49,42 @@ async def run_case(
     database_url is passed explicitly to the tools server and to the module's lookup factory
     (DATABASE_URL in normal runs, TEST_DATABASE_URL in tests). Without a lookup_factory, the
     module builds one from database_url and it is closed when the case ends; a factory passed
-    in belongs to the caller, who closes it."""
+    in belongs to the caller, who closes it.
+
+    recorder, when given, is called once with the finished result (every outcome, including
+    a tools server that did not start) and returns the stored run id. A recording failure
+    never changes the case outcome: the same CaseResult is returned and a generic line naming
+    only the exception class goes to stderr. A caller that must know about failures wraps its
+    recorder (the eval runner counts them and exits non-zero)."""
+    result = await _run_case(
+        case_id,
+        spec,
+        profile_name,
+        database_url=database_url,
+        limits=limits,
+        adapter=adapter,
+        lookup_factory=lookup_factory,
+        keep_tool_content=keep_tool_content,
+    )
+    if recorder is not None:
+        try:
+            recorder(result)
+        except Exception as exc:
+            print(f"error: recording case {case_id} failed ({type(exc).__name__})", file=sys.stderr)
+    return result
+
+
+async def _run_case(
+    case_id: str,
+    spec: ModuleSpec,
+    profile_name: str,
+    *,
+    database_url: str,
+    limits: HarnessLimits | None,
+    adapter: ModelAdapter | None,
+    lookup_factory: LookupFactory | None,
+    keep_tool_content: bool,
+) -> CaseResult:
     limits = limits if limits is not None else load_limits()
     profile = get_profile(profile_name)
     adapter = adapter if adapter is not None else make_adapter(profile)

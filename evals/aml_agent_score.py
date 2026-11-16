@@ -2,13 +2,17 @@
 
 Usage (from the repo root):
     uv run python -m evals.aml_agent_score --run evals/runs/<run_id> [--target-recall 0.9]
-        [--out PATH] [--allow-remote]
+        [--out PATH] [--allow-remote] [--record]
 
 This file is one of the few allowed label readers (see evals/test_label_readers.py and
 docs/decisions/0005). It reads the labels itself at scoring time, so the runner and the agent
 never see them. It is strictly read-only (SELECT only). The database URL comes from the
 environment only and is never printed, and a remote database is refused unless
 --allow-remote is passed. The report holds counts and rates only, never per-alert truth.
+
+With --record (off by default) the report is also written to eval_results through
+HARNESS_WRITE_DATABASE_URL (same local-only check). The run must have been recorded by the
+runner with --record first. The labels are read through DATABASE_URL and never written.
 
 Metrics follow docs/plans/agent-loop.md section 8. Every metric is split into early alerts
 (window ends on or before 2022-09-10) and late ones (decision 0006). Early is the headline.
@@ -50,6 +54,7 @@ from evals.run_aml_agent import (
 )
 from harness.db.models import Alert
 from harness.db.session import DatabaseConnectionError, get_engine, run_safely
+from harness.records import WRITE_URL_ENV, eval_run_exists, get_write_engine, record_eval_result
 from harness.trace import CaseResult
 from harness.verifiers.base import VerifierResult
 
@@ -545,7 +550,36 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-remote", action="store_true", help="allow a database that is not local"
     )
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help=f"also write the report to eval_results through {WRITE_URL_ENV}",
+    )
     return parser
+
+
+def record_report(
+    report: Mapping[str, Any], target_recall: float, allow_remote: bool = False
+) -> None:
+    """Write the report to eval_results through the write engine. Raises SetupError when the
+    eval run is not recorded."""
+    eval_run_id = str(report["run_id"])
+    engine = get_write_engine(allow_remote=allow_remote)
+    try:
+
+        def work() -> bool:
+            with engine.begin() as conn:
+                if not eval_run_exists(conn, eval_run_id):
+                    return False
+                record_eval_result(conn, eval_run_id, report, target_recall)
+                return True
+
+        if not run_safely(work):
+            raise SetupError(
+                f"eval run {eval_run_id} is not recorded; run the runner with --record first"
+            )
+    finally:
+        engine.dispose()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -559,6 +593,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise SetupError("--target-recall must be in (0, 1]")
         print(target_text(url))
         check_target(url, args.allow_remote)
+        write_url = os.environ.get(WRITE_URL_ENV)
+        if args.record:
+            if not write_url:
+                raise SetupError(f"--record needs {WRITE_URL_ENV} to be set")
+            print("write " + target_text(write_url))
+            check_target(write_url, args.allow_remote, WRITE_URL_ENV)
         engine = get_engine()
         try:
 
@@ -569,6 +609,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = run_safely(work)
         finally:
             engine.dispose()
+        if args.record:
+            record_report(report, args.target_recall, args.allow_remote)
     except (SetupError, DatabaseConnectionError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}")
         return 1
@@ -576,6 +618,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render_json(report), encoding="utf-8")
     print(f"report written: {out}")
+    if args.record:
+        print(f"recorded: eval result for {report['run_id']}")
     return 0
 
 

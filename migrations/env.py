@@ -1,8 +1,12 @@
-"""Alembic environment. The URL is read only through harness.db.session.get_database_url."""
+"""Alembic environment. The URL is read only through harness.db.session.get_database_url.
+
+A caller (the migration test) may instead hand in an open connection as
+config.attributes["connection"]; then no URL is read at all."""
 
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+import harness.db.records_models  # noqa: F401  (registers the records tables on Base)
 from harness.db.models import Base
 from harness.db.session import DatabaseConnectionError, get_database_url
 
@@ -31,6 +35,12 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    given = config.attributes.get("connection")
+    if given is not None:
+        context.configure(connection=given, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
     url = get_database_url()
     try:
         engine = create_engine(url, poolclass=pool.NullPool, echo=False, hide_parameters=True)

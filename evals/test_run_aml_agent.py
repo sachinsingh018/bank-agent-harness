@@ -124,6 +124,46 @@ def test_scorer_refuses_a_remote_database_before_connecting(
     assert code != 0 and "target: remote database" in out and "example.com" not in out
 
 
+LOCAL = "postgresql+psycopg://postgres:postgres@db:5432/harness"
+
+
+def test_runner_record_needs_the_write_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", LOCAL)
+    monkeypatch.delenv("HARNESS_WRITE_DATABASE_URL", raising=False)
+    monkeypatch.setattr(run_aml_agent, "run_dataset", _no_connect)
+    argv = ["--dataset", str(SMOKE), "--profile", "scripted", "--out-dir", str(tmp_path)]
+    assert run_aml_agent.main([*argv, "--record"]) == 2
+    assert "HARNESS_WRITE_DATABASE_URL" in capsys.readouterr().out
+
+
+def test_runner_record_refuses_a_remote_write_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", LOCAL)
+    monkeypatch.setenv("HARNESS_WRITE_DATABASE_URL", REMOTE)
+    monkeypatch.setattr(run_aml_agent, "run_dataset", _no_connect)
+    monkeypatch.setattr(run_aml_agent, "get_write_engine", _no_connect)
+    argv = ["--dataset", str(SMOKE), "--profile", "scripted", "--out-dir", str(tmp_path)]
+    assert run_aml_agent.main([*argv, "--record"]) == 2
+    out = capsys.readouterr().out
+    assert "write target: remote database" in out and "--allow-remote" in out
+    assert "HARNESS_WRITE_DATABASE_URL is not local" in out
+    assert "example.com" not in out and "secretpw" not in out
+
+
+def test_scorer_record_refuses_a_remote_write_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", LOCAL)
+    monkeypatch.setenv("HARNESS_WRITE_DATABASE_URL", REMOTE)
+    monkeypatch.setattr(aml_agent_score, "get_engine", _no_connect)
+    assert aml_agent_score.main(["--run", str(tmp_path), "--record"]) != 0
+    out = capsys.readouterr().out
+    assert "write target: remote database" in out and "example.com" not in out
+
+
 def test_real_profile_without_api_key_fails_fast(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

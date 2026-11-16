@@ -199,8 +199,8 @@ Names follow brief section 9:
 - `eval_runs` and `eval_results`, so any two eval runs can be compared in Postgres (brief section 5).
 
 Write path:
-- Only the CaseRunner and the eval runner write, through their own connection from a separate env var, `HARNESS_WRITE_DATABASE_URL`. It is never passed to `server_params` (which passes only `DATABASE_URL`). Locally both URLs may point at the same role for now; a separate read-only role for the tools stays future hardening (docs/plans/mcp-tools.md).
-- Static test: no file under `harness/` or `modules/aml/agent/` imports `harness.db.session` or opens an engine, except `harness/runner.py` and the write module `harness/records.py`. The verifiers read only through `tools.aml.db`.
+- Only the write module `harness/records.py` writes, called by the eval runner and scorer with `--record` (opt in; the CaseRunner gets a recorder callable and imports no database code), through their own connection from a separate env var, `HARNESS_WRITE_DATABASE_URL`. It is never passed to `server_params` (which passes only `DATABASE_URL`). Locally both URLs may point at the same role for now; a separate read-only role for the tools stays future hardening (docs/plans/mcp-tools.md).
+- Static test: no file under `harness/` or `modules/aml/agent/` imports `harness.db.session`, `harness.records`, `create_engine` or `psycopg`, except `harness/db/` and the write module `harness/records.py`; only `evals/run_aml_agent.py` and `evals/aml_agent_score.py` import `harness.records` (decision 0007). The verifiers read only through `tools.aml.db`.
 
 ## 11. Where things live
 

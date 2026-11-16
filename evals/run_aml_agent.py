@@ -3,11 +3,18 @@
 Usage (from the repo root):
     uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v1.json \
         --profile scripted [--limit N] [--concurrency 1] [--out-dir evals/runs] [--allow-remote]
+        [--record]
 
 Writes evals/runs/<run_id>/results.jsonl (one CaseResult per line) and manifest.json. The
 agent stays read-only: this script writes files only, never the database. The database URL
 comes from DATABASE_URL and is never printed; only "target: local database" or "target:
 remote database" is shown, and a remote target is refused unless --allow-remote is passed.
+
+With --record (off by default) the run is also written to the records tables through
+HARNESS_WRITE_DATABASE_URL (never DATABASE_URL, and never passed to the tools server): the
+eval_runs row at the start (finished fields at the end) and each case through
+harness.records.record_case_result. The same local-only check applies to that URL. A case
+that could not be recorded makes the script exit 1 after the run.
 
 Cases that end in human review are a valid outcome (exit code 0). Only setup errors exit
 non-zero. The last stdout line is run_dir=<path>, so CI can pick it up.
@@ -32,22 +39,35 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.engine import make_url
+from sqlalchemy import Engine
 
 from evals.scripted_policy import ScriptedAmlPolicy
 from harness.config import HarnessLimits, load_limits
+from harness.db.session import (
+    LOCAL_HOSTS,
+    REDIRECT_QUERY_KEYS,
+    DatabaseConnectionError,
+    is_local_url,
+    run_safely,
+)
 from harness.models.config import ModelProfile, Provider, get_profile
 from harness.models.factory import make_adapter
 from harness.models.types import ModelAdapter
-from harness.prompts import load_prompt
+from harness.prompts import LoadedPrompt, load_prompt
+from harness.records import (
+    WRITE_URL_ENV,
+    finish_eval_run,
+    get_write_engine,
+    record_case_result,
+    record_eval_run,
+)
 from harness.runner import run_case
 from harness.trace import CaseResult
 from modules.aml.agent.spec import AML_SPEC, CASE_MESSAGE_PROMPT
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "evals" / "runs"
-LOCAL_HOSTS = ("db", "localhost", "127.0.0.1")
-REDIRECT_QUERY_KEYS = ("host", "hostaddr", "service")
+__all__ = ["LOCAL_HOSTS", "REDIRECT_QUERY_KEYS", "is_local_url"]
 REQUIRED_PREFIX = "postgresql+psycopg://"
 API_KEY_ENV: dict[Provider, str | None] = {
     "anthropic": "ANTHROPIC_API_KEY",
@@ -80,33 +100,18 @@ class LoadedDataset:
     sha256: str
 
 
-def is_local_url(url: str) -> bool:
-    """True only for a single plain local host. A missing host (socket or env defaults), a
-    host list, or a query that can redirect the connection (host, hostaddr, service) counts
-    as not local, so it needs --allow-remote."""
-    try:
-        parsed = make_url(url)
-    except Exception:
-        return False
-    host = parsed.host
-    if not host or "," in host:
-        return False
-    if any(key in parsed.query for key in REDIRECT_QUERY_KEYS):
-        return False
-    return host in LOCAL_HOSTS
-
-
 def target_text(url: str) -> str:
     return "target: local database" if is_local_url(url) else "target: remote database"
 
 
-def check_target(url: str, allow_remote: bool) -> None:
-    """Refuse a non-local database unless allowed. Runs before any connection."""
+def check_target(url: str, allow_remote: bool, env_name: str = "DATABASE_URL") -> None:
+    """Refuse a non-local database unless allowed. Runs before any connection. is_local_url
+    lives in harness.db.session, so the records CLI applies the same rule."""
     if not url.startswith(REQUIRED_PREFIX):
-        raise SetupError("DATABASE_URL must use the postgresql+psycopg:// prefix")
+        raise SetupError(f"{env_name} must use the postgresql+psycopg:// prefix")
     if not is_local_url(url) and not allow_remote:
         raise SetupError(
-            "the database is not local (db, localhost, 127.0.0.1); pass --allow-remote to "
+            f"{env_name} is not local (db, localhost, 127.0.0.1); pass --allow-remote to "
             "run against it on purpose"
         )
 
@@ -170,7 +175,7 @@ def build_manifest(
     profile: ModelProfile,
     limits: HarnessLimits,
     started_at: datetime,
-    finished_at: datetime,
+    finished_at: datetime | None,
     results: Sequence[CaseResult],
     concurrency: int,
 ) -> dict[str, Any]:
@@ -200,7 +205,7 @@ def build_manifest(
             "alerts_run": len(alert_ids),
         },
         "started_at": started_at.isoformat(),
-        "finished_at": finished_at.isoformat(),
+        "finished_at": None if finished_at is None else finished_at.isoformat(),
         "counts": {
             "total": len(results),
             "by_status": dict(sorted(Counter(r.status for r in results).items())),
@@ -210,6 +215,40 @@ def build_manifest(
     }
 
 
+@dataclass
+class CaseRecorder:
+    """Writes each finished case through the write engine and counts failures. A failure is
+    re-raised so run_case reports it; the case outcome itself is unchanged."""
+
+    engine: Engine
+    profile: ModelProfile
+    prompt: LoadedPrompt
+    eval_run_id: str
+    trace_path: str
+    recorded: int = 0
+    failed: int = 0
+
+    def __call__(self, result: CaseResult) -> str:
+        def work() -> str:
+            with self.engine.connect() as conn:
+                return record_case_result(
+                    conn,
+                    result,
+                    profile=self.profile,
+                    prompt=self.prompt,
+                    eval_run_id=self.eval_run_id,
+                    trace_path=self.trace_path,
+                )
+
+        try:
+            run_id = run_safely(work)
+        except Exception:
+            self.failed += 1
+            raise
+        self.recorded += 1
+        return run_id
+
+
 async def _run_all(
     alert_ids: Sequence[str],
     profile: ModelProfile,
@@ -217,6 +256,7 @@ async def _run_all(
     limits: HarnessLimits,
     concurrency: int,
     results_path: Path,
+    recorder: CaseRecorder | None = None,
 ) -> list[CaseResult]:
     gate = asyncio.Semaphore(concurrency)
     results: list[CaseResult] = []
@@ -231,6 +271,7 @@ async def _run_all(
                     database_url=database_url,
                     limits=limits,
                     adapter=make_run_adapter(profile),
+                    recorder=recorder,
                 )
             out.write(result.model_dump_json() + "\n")
             out.flush()
@@ -250,9 +291,11 @@ def run_dataset(
     concurrency: int = 1,
     out_dir: Path = DEFAULT_OUT_DIR,
     limits: HarnessLimits | None = None,
+    record_engine: Engine | None = None,
 ) -> Path:
     """Run every alert of the dataset and return the run directory. The caller has already
-    checked the database target."""
+    checked the database targets. With record_engine, the run is also written to the records
+    tables and the manifest gets a "records" block with the recorded and failed case counts."""
     if concurrency < 1:
         raise SetupError("--concurrency must be at least 1")
     if limit is not None and limit < 1:
@@ -269,8 +312,48 @@ def run_dataset(
     run_id = new_run_id(started_at)
     run_dir = out_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
+    recorder: CaseRecorder | None = None
+    if record_engine is not None:
+        engine = record_engine
+        start = build_manifest(
+            run_id=run_id,
+            dataset=dataset,
+            alert_ids=alert_ids,
+            profile=profile,
+            limits=limits,
+            started_at=started_at,
+            finished_at=None,
+            results=[],
+            concurrency=concurrency,
+        )
+        start["counts"] = None
+        start["total_cost_usd"] = None
+
+        def start_run() -> None:
+            with engine.connect() as conn:
+                record_eval_run(conn, start)
+
+        try:
+            run_safely(start_run)
+        except DatabaseConnectionError:
+            raise SetupError("could not record the eval run (details hidden)") from None
+        recorder = CaseRecorder(
+            engine=engine,
+            profile=profile,
+            prompt=load_prompt(AML_SPEC.prompt),
+            eval_run_id=run_id,
+            trace_path=f"{_relative(run_dir)}/{RESULTS_FILE}",
+        )
     results = asyncio.run(
-        _run_all(alert_ids, profile, database_url, limits, concurrency, run_dir / RESULTS_FILE)
+        _run_all(
+            alert_ids,
+            profile,
+            database_url,
+            limits,
+            concurrency,
+            run_dir / RESULTS_FILE,
+            recorder,
+        )
     )
     manifest = build_manifest(
         run_id=run_id,
@@ -283,6 +366,26 @@ def run_dataset(
         results=results,
         concurrency=concurrency,
     )
+    if record_engine is not None and recorder is not None:
+        engine = record_engine
+        finished = manifest
+
+        def finish_run() -> None:
+            with engine.connect() as conn:
+                finish_eval_run(conn, finished)
+
+        finished_ok = True
+        try:
+            run_safely(finish_run)
+        except (DatabaseConnectionError, RuntimeError):
+            print("error: could not record the end of the eval run (details hidden)")
+            finished_ok = False
+        manifest["records"] = {
+            "eval_run_id": run_id,
+            "cases_recorded": recorder.recorded,
+            "cases_failed": recorder.failed,
+            "eval_run_finished": finished_ok,
+        }
     (run_dir / MANIFEST_FILE).write_text(
         json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
     )
@@ -299,6 +402,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-remote", action="store_true", help="allow a database that is not local"
     )
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help=f"also write the run to the records tables through {WRITE_URL_ENV}",
+    )
     return parser
 
 
@@ -310,14 +418,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise SetupError("DATABASE_URL is not set")
         print(target_text(url))
         check_target(url, args.allow_remote)
-        run_dir = run_dataset(
-            args.dataset,
-            args.profile,
-            url,
-            limit=args.limit,
-            concurrency=args.concurrency,
-            out_dir=args.out_dir,
-        )
+        record_engine: Engine | None = None
+        if args.record:
+            write_url = os.environ.get(WRITE_URL_ENV)
+            if not write_url:
+                raise SetupError(f"--record needs {WRITE_URL_ENV} to be set")
+            print("write " + target_text(write_url))
+            check_target(write_url, args.allow_remote, WRITE_URL_ENV)
+            try:
+                record_engine = get_write_engine(allow_remote=args.allow_remote)
+            except (DatabaseConnectionError, RuntimeError) as exc:
+                raise SetupError(str(exc)) from None
+        try:
+            run_dir = run_dataset(
+                args.dataset,
+                args.profile,
+                url,
+                limit=args.limit,
+                concurrency=args.concurrency,
+                out_dir=args.out_dir,
+                record_engine=record_engine,
+            )
+        finally:
+            if record_engine is not None:
+                record_engine.dispose()
     except SetupError as exc:
         print(f"error: {exc}")
         return 2
@@ -328,8 +452,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"human review reasons: {counts['by_human_review_reason']}, "
         f"cost usd: {manifest['total_cost_usd']}"
     )
+    records = manifest.get("records")
+    code = 0
+    if records is not None:
+        print(
+            f"recorded: eval run {records['eval_run_id']}, cases {records['cases_recorded']}, "
+            f"failed {records['cases_failed']}"
+        )
+        if records["cases_failed"] or not records["eval_run_finished"]:
+            print("error: the run was not fully recorded")
+            code = 1
     print(f"run_dir={_relative(run_dir)}")
-    return 0
+    return code
 
 
 if __name__ == "__main__":

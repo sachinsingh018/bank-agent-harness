@@ -24,3 +24,5 @@ Finance terms, added as they come up.
 - **Calibration:** whether a stated confidence matches reality. If the agent says 0.8 on many alerts, about 80% of them should be real laundering.
 - **ECE (expected calibration error):** one number for calibration: group answers by confidence, compare each group's average confidence with how often it was right, and average the gaps. Lower is better.
 - **Data leak (in evaluation):** a clue in the test data that gives away the answer for a reason that would not exist in real life, so scores look better than they are.
+- **Audit log:** a record of who did what and when (agent proposals, human approvals), which nobody may change or delete afterwards. Regulators expect banks to keep one for every decision.
+- **Hash chain:** a way to make tampering visible: each record stores a fingerprint (hash) of itself plus the fingerprint of the record before it. Change one old record and every fingerprint after it no longer matches.
