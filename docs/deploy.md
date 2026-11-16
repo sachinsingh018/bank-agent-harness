@@ -7,6 +7,8 @@ docs/plans/mvp-hosting.md.
 Three pieces: the database on Neon (prod branch), the API on Render, the web app on Vercel. Do
 the steps in order. Never paste a database URL into chat, a file or a commit.
 
+> **Done on 2026-11-16 (Option A):** the demo uses the same Neon database as the Codespace secret `DATABASE_URL` (it already held the slice and the v1 alerts). It was migrated to 0004 and the two real model runs below were recorded there; the audit chain verified (6 rows). Section 1 is only needed again for new runs or a different database. In Render, use that same database URL.
+
 ## 1. Neon: prepare the prod database (owner approval needed)
 
 Every command in this section writes to the real hosted database. Run each one only after you
