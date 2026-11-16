@@ -39,10 +39,14 @@ M2 core, following `docs/plans/agent-loop.md` (verified by a reviewer pass, owne
 3. Done: MCP client, ModuleSpec, prompt loader, AmlFindings model, investigator prompt v1.
 4. Done: agent loop (limits, single shared retry, stop reason table, run trace) and a minimal case runner.
 5. Done: verifier framework and AML citation, arithmetic and alert membership verifiers.
-6. Done: label guard changes, datasets (dev 98 alerts with 16 strict positives, heldout 73 with 23, smoke 10 with 3), eval runner, scorer, CI fast eval with the scripted adapter, decision note 0005. Runner and scorer refuse a non-local database unless `--allow-remote`.
-7. Next: first real scored run (needs `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` as a Codespaces secret and owner approval for spend), then 8 audit and run tables.
-Smoke set caveat: all 3 strict positives in the smoke set are in the late window, so it checks plumbing but cannot judge prompts on the honest early headline. Consider a smoke v2 with early positives before prompt work.
-Follow-ups noted by reviewers (safe today, all paths end in human review): verifiers run synchronously after the last wall clock check, so a slow database call is not covered by the time limit; a database error inside a verifier is reported as verifier_failed rather than an infrastructure reason; a close recommendation does not check the alert exists (alert_id must still equal the case id).
+6. Done: label guard changes, datasets (dev 98 alerts with 16 strict positives, heldout 73 with 23), smoke v2 (10 alerts, 2 early and 1 late strict positive), eval runner, scorer, CI fast eval with the scripted adapter, decision note 0005. Runner and scorer refuse a non-local database unless `--allow-remote`.
+8. Done (built before 7 because it needs no key): `case_events` append-only audit log with a hash chain and run digests, append-only `agent_runs` and `model_calls`, `eval_runs` and `eval_results`, opt in recording with `--record` and `HARNESS_WRITE_DATABASE_URL`, `python -m harness.records verify`, decision note 0007. Follow-ups also done: verifiers bounded by the wall clock, verifier crashes end as `verifier_error` without spending the retry, close on a missing alert fails.
+7. Next: first real scored run. Waiting on the owner to add an API key. Steps:
+   - Sign up at OpenRouter (free models need no payment) and create an API key; or use an Anthropic Console key.
+   - Add it as a Codespaces secret for this repo (GitHub, Settings, Codespaces, Secrets): `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`. Restart the Codespace so it loads.
+   - Pick a currently free model on OpenRouter and set it in the `openrouter-free-dev` profile in `config/models.toml` (the placeholder may no longer be free).
+   - Run on the local database: `DATABASE_URL=<local harness URL> uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v2.json --profile openrouter-free-dev --record`, then score with `evals.aml_agent_score --run <run_dir> --record`. Read 3 traces by hand. Then the dev set.
+Later hardening: a database side statement timeout for the tools and verifier connections (a hung query can hold a connection); separate database roles (read-only tools, insert-only writer) and an external anchor for the latest audit hash; confirm the US or EU host and prices for the `openrouter-eu-us-open` profile before benchmarks.
 Neon smoke test is not needed for this work: the local database, once loaded, has the same data. Do it before the hosted demo.
 Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
 
