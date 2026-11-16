@@ -18,7 +18,7 @@ cache_write = "5.00"
 # swapped for whatever free model is currently available. Never depend on it.
 [profiles.openrouter-free-dev]
 provider = "openrouter"
-model = "deepseek/deepseek-chat-v3.1:free"
+model = "nvidia/nemotron-3-ultra-550b-a55b:free"  # chosen 2026-11-16, free tier: 50 requests a day
 max_output_tokens = 8000
 
 [profiles.openrouter-free-dev.prices]

@@ -4,11 +4,14 @@ Start here in a new chat. This is a summary, not a raw transcript. The repo is p
 
 Update this file at the end of each working session. Do not track setup status here: hosting, database and secrets are managed outside the repo.
 
-## Current state (2026-11-16, end of session)
-- M2 steps 1 to 6 and 8 of `docs/plans/agent-loop.md` are built, reviewed, pushed, CI green (722 tests). Only step 7, the first real scored run, is left for M2.
-- The owner has just added `OPENROUTER_API_KEY` as a Codespaces secret and restarted the Codespace. First thing next session: confirm the key is visible without printing it (for example `test -n "$OPENROUTER_API_KEY" && echo set`), pick a currently free OpenRouter model for the `openrouter-free-dev` profile, then do step 7 (commands below under "Next piece of work").
-- Full transcript of the 2026-11-15/16 session: `.claude-home-backup/transcripts/2026-11-16-m2-build.jsonl` (gitignored, local only). Read this log first; open the transcript only if something here is unclear.
-- Working style that worked well: one builder subagent per step, then the test suite plus an independent reviewer subagent, fix findings, commit. Ask the owner before every push.
+## Current state (2026-11-16)
+- M2 steps 1 to 6 and 8 are built and pushed. Step 7 has started: the first real run is done (below). M2 is done once a real scored run on the dev set exists.
+- `OPENROUTER_API_KEY` is set as a Codespaces secret. It is on OpenRouter's free tier: 50 free-model requests per day (a case needs about 6 to 13 model calls), and free models are slow (about 25 s per call).
+- `openrouter-free-dev` now uses `nvidia/nemotron-3-ultra-550b-a55b:free`.
+- First real run `evals/runs/20261116T014628Z-c9d334` (3 smoke v2 alerts, local database, recorded, chain ok): 1 proposed (a real laundering alert, correctly escalated, but typology wrong), 1 human_review `limit_output` (the model used all 8000 output tokens before answering), 1 human_review `verifier_failed` (wrongly escalated a non-laundering alert; its stated sums were wrong, so the arithmetic verifier caught it). Both submissions first failed the schema (an empty `txn_ids` list on a claim; 21 amounts where the cap is 20) and used the retry.
+- Proposed fixes, waiting for the owner: prompt v2 that states the schema limits and asks for fewer, cheaper tool calls; a read-only `sum_transfers` tool so the model never adds decimals itself; a higher output token cap for this profile. Every change is compared against v1 on the same fixed alerts.
+- Full transcript of the 2026-11-15/16 build session: `.claude-home-backup/transcripts/2026-11-16-m2-build.jsonl` (gitignored, local only).
+- Working style: one builder subagent per step, then tests plus an independent reviewer subagent, fix findings, commit. Ask the owner before every push.
 
 ## Where the work stands
 - M1 (Data) is done. The AML slice is loaded into Neon and verified (25,493 transfers, 522 laundering, 64 schemes).
