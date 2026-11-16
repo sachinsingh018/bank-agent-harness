@@ -76,3 +76,26 @@ def test_transfers_match_get_transaction_and_are_cached(
     before = len(recorder.statements)
     assert lookup.transfers([*ids, missing]) == views
     assert len(recorder.statements) == before  # cached, missing ids included
+
+
+def test_lookup_reads_run_under_the_statement_timeout(
+    harness_test_url: str, harness_engine: Engine, harness_samples: Samples
+) -> None:
+    """The lookup goes through open_readonly, so every read carries the 5 s statement timeout."""
+    engine = build_tool_engine(harness_test_url)
+    recorder = StatementRecorder()
+    recorder.install(engine)
+    try:
+        lookup = AmlLookup(engine)
+        ids = sorted(_alert_ids(harness_engine, harness_samples.alert_id))[:2]
+        lookup.transfers(ids)
+        lookup.alert_txn_ids(harness_samples.alert_id)
+    finally:
+        engine.dispose()
+    timeout = "SET LOCAL statement_timeout = 5000"
+    read_only = "SET TRANSACTION READ ONLY"
+    assert recorder.statements.count(read_only) == 2
+    assert recorder.statements.count(timeout) == 2
+    for i, statement in enumerate(recorder.statements):
+        if statement == read_only:
+            assert recorder.statements[i + 1] == timeout

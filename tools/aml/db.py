@@ -1,7 +1,8 @@
 """The only place that opens a database connection for the AML tools.
 
 Two layers keep the tools read-only and away from the answer key:
-1. Every connection runs in a read-only transaction, so writes fail at the database.
+1. Every connection runs in a read-only transaction, so writes fail at the database. The
+   transaction also gets a statement timeout (SET LOCAL, so it ends with the transaction).
 2. A guard inspects every statement before it runs. For statements built with SQLAlchemy it
    walks the expression tree and refuses anything that is not a plain read of the four allowed
    tables using an explicit list of node kinds and functions. Statements that arrive as raw
@@ -25,6 +26,7 @@ from sqlalchemy.sql.visitors import iterate
 
 from harness.db.models import Account, Alert, AlertTransaction, Transaction
 from harness.db.session import DatabaseConnectionError, get_database_url
+from tools.aml.caps import STATEMENT_TIMEOUT_MS
 
 ALLOWED_TABLES = frozenset({"transactions", "accounts", "alerts", "alert_transactions"})
 # The one place in tools/ where the answer key table is named: a deny constant. It is only ever
@@ -52,11 +54,14 @@ FUNCTION_TYPES: frozenset[type] = frozenset(
 )
 
 # Raw (non SQLAlchemy built) statements allowed, after lowercasing and collapsing whitespace.
-# Only what open_readonly sends. The dialect's own first-connect statements (version,
-# current_schema, standard_conforming_strings) run on an internal connection that does not
-# carry the engine's listeners, by design, so they never reach the guard and are not
-# whitelisted. If a future SQLAlchemy changes that, the guard fails closed with a generic error.
-HOUSEKEEPING = frozenset({"set transaction read only"})
+# Only what open_readonly sends: the read-only switch and the per transaction statement
+# timeout, built only from the integer constant in caps.py, never from input. The dialect's
+# own first-connect statements (version, current_schema, standard_conforming_strings) run on
+# an internal connection that does not carry the engine's listeners, by design, so they never
+# reach the guard and are not whitelisted. If a future SQLAlchemy changes that, the guard
+# fails closed with a generic error.
+_TIMEOUT_SQL = f"SET LOCAL statement_timeout = {int(STATEMENT_TIMEOUT_MS)}"
+HOUSEKEEPING = frozenset({"set transaction read only", _TIMEOUT_SQL.lower()})
 
 
 class ToolSecurityError(Exception):
@@ -79,6 +84,22 @@ class SetTransactionReadOnly(Executable, ClauseElement):
 @compiles(SetTransactionReadOnly)
 def _compile_read_only(element: SetTransactionReadOnly, compiler: Any, **kw: Any) -> str:
     return "SET TRANSACTION READ ONLY"
+
+
+class SetLocalStatementTimeout(Executable, ClauseElement):
+    """SET LOCAL statement_timeout for the current transaction only. It works through Neon
+    poolers, unlike startup options. The value is the caps.py constant and nothing else."""
+
+    inherit_cache = True
+
+
+@compiles(SetLocalStatementTimeout)
+def _compile_statement_timeout(element: SetLocalStatementTimeout, compiler: Any, **kw: Any) -> str:
+    return _TIMEOUT_SQL
+
+
+# Housekeeping clauses are accepted only if their compiled text is also in HOUSEKEEPING.
+_HOUSEKEEPING_TYPES: frozenset[type] = frozenset({SetTransactionReadOnly, SetLocalStatementTimeout})
 
 
 # Node classes a plain read may contain. A node is accepted only if its exact class (type, not
@@ -276,7 +297,7 @@ def _check_node(node: Any) -> None:
 
 def check_compiled_statement(statement: Any) -> None:
     """Raise ToolSecurityError unless this statement object is a plain read of allowed tables."""
-    if type(statement) is SetTransactionReadOnly:
+    if type(statement) in _HOUSEKEEPING_TYPES:
         return
     if type(statement) is not selectable.Select:
         raise _refuse("not a read")
@@ -306,6 +327,8 @@ def check_execution(statement: str, compiled: Any) -> None:
         raise _refuse("unexpected syntax")
     if getattr(compiled, "schema_translate_map", None):
         raise _refuse("execution option not allowed")
+    if type(getattr(compiled, "statement", None)) in _HOUSEKEEPING_TYPES:
+        check_raw_statement(statement)
     check_compiled_statement(getattr(compiled, "statement", None))
 
 
@@ -371,7 +394,9 @@ def make_tool_engine() -> Engine:
 
 @contextmanager
 def open_readonly(engine: Engine) -> Iterator[Connection]:
-    """A connection inside a read-only transaction that is always rolled back."""
+    """A connection inside a read-only transaction that is always rolled back. A statement
+    that runs longer than STATEMENT_TIMEOUT_MS is cancelled by Postgres and surfaces as the
+    generic DatabaseConnectionError below."""
     try:
         conn = engine.connect()
     except (SQLAlchemyError, OSError):
@@ -379,6 +404,7 @@ def open_readonly(engine: Engine) -> Iterator[Connection]:
     try:
         conn.begin()
         conn.execute(SetTransactionReadOnly())
+        conn.execute(SetLocalStatementTimeout())
         yield conn
     except (SQLAlchemyError, OSError):
         raise DatabaseConnectionError("Database operation failed (details hidden)") from None

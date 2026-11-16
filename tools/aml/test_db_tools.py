@@ -12,12 +12,14 @@ from sqlalchemy import Engine, create_engine, func, insert, select
 from sqlalchemy.exc import DBAPIError
 
 from harness.db.models import Alert, Transaction
+from tests_support.aml_db import local_url
 from tools.aml.caps import DEFAULT_ROWS, MAX_COUNTERPARTIES, MAX_RESPONSE_CHARS, MAX_ROWS
 from tools.aml.conftest import ToolData
 from tools.aml.db import (
     SetTransactionReadOnly,
     StatementRecorder,
     ToolSecurityError,
+    build_tool_engine,
     open_readonly,
 )
 from tools.aml.models import (
@@ -336,3 +338,59 @@ def test_sum_transfers_input_limits() -> None:
             SumTransfersInput.model_validate(bad)
     with pytest.raises(ValueError):
         SumTransfersInput.model_validate({"txn_ids": [1], "side": "both"})
+
+
+def _show_statement_timeout(conn: Any) -> str:
+    """Test only: ask the driver directly, so the guard (which refuses SHOW) is not involved."""
+    row = conn.connection.driver_connection.execute("SHOW statement_timeout").fetchone()
+    return str(row[0])
+
+
+def test_open_readonly_sets_a_local_statement_timeout(tool_engine: Engine) -> None:
+    with open_readonly(tool_engine) as conn:
+        assert _show_statement_timeout(conn) == "5s"
+    # SET LOCAL ends with the transaction: a pooled connection is back to the server default.
+    with tool_engine.connect() as conn:
+        assert _show_statement_timeout(conn) != "5s"
+        conn.rollback()
+
+
+def test_open_readonly_sets_the_timeout_right_after_read_only() -> None:
+    engine = build_tool_engine(local_url())
+    recorder = StatementRecorder()
+    recorder.install(engine)
+    try:
+        with open_readonly(engine) as conn:
+            conn.execute(select(func.count()).select_from(Alert))
+    finally:
+        engine.dispose()
+    assert recorder.statements[:2] == [
+        "SET TRANSACTION READ ONLY",
+        "SET LOCAL statement_timeout = 5000",
+    ]
+    assert len(recorder.statements) == 3
+
+
+def test_statement_over_the_timeout_is_a_generic_internal_error() -> None:
+    """A cancelled statement surfaces as the generic error and the engine keeps working.
+    pg_sleep cannot pass the guard, so this uses an unguarded test engine and lowers the
+    timeout through the driver for this transaction only."""
+    from harness.db.session import DatabaseConnectionError
+    from tools.aml.server import INTERNAL_MESSAGE, _failure_for
+
+    plain = create_engine(local_url(), echo=False, hide_parameters=True)
+    try:
+        with pytest.raises(DatabaseConnectionError) as info:
+            with open_readonly(plain) as conn:
+                driver = conn.connection.driver_connection
+                assert driver is not None
+                driver.execute("SET LOCAL statement_timeout = 50")
+                conn.execute(select(func.pg_sleep(1)))
+        assert str(info.value) == "Database operation failed (details hidden)"
+        failure = _failure_for(info.value)
+        assert failure.code == "internal"
+        assert failure.message == INTERNAL_MESSAGE
+        with open_readonly(plain) as conn:
+            assert conn.execute(select(func.count()).select_from(Alert)).scalar_one() >= 0
+    finally:
+        plain.dispose()

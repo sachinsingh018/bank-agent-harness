@@ -40,6 +40,7 @@ from tools.aml.db import (
     ALLOWED_FUNCTIONS,
     ALLOWED_TABLES,
     HOUSEKEEPING,
+    SetLocalStatementTimeout,
     SetTransactionReadOnly,
     ToolSecurityError,
     check_compiled_statement,
@@ -98,10 +99,21 @@ def test_plain_reads_of_the_real_tables_are_accepted() -> None:
 
 
 def test_housekeeping_set_is_accepted_exactly() -> None:
-    assert HOUSEKEEPING == {"set transaction read only"}
-    for sql in ("SET TRANSACTION READ ONLY", "set  transaction\n read only;"):
+    assert HOUSEKEEPING == {"set transaction read only", "set local statement_timeout = 5000"}
+    for sql in (
+        "SET TRANSACTION READ ONLY",
+        "set  transaction\n read only;",
+        "SET LOCAL statement_timeout = 5000",
+        "set local  statement_timeout = 5000;",
+    ):
         run_raw(sql)
     run_guard(SetTransactionReadOnly())
+    run_guard(SetLocalStatementTimeout())
+
+
+def test_statement_timeout_construct_compiles_to_the_expected_statement() -> None:
+    compiled = str(SetLocalStatementTimeout().compile(dialect=DIALECT))
+    assert compiled == "SET LOCAL statement_timeout = 5000"
 
 
 def test_allowed_sets_are_exact() -> None:
@@ -289,6 +301,15 @@ RAW_REFUSED = [
     "set transaction read write",
     "set transaction read only; select 1",
     "set transaction read only; drop table alerts",
+    "set local statement_timeout = 0",
+    "set local statement_timeout = 50000",
+    "set local statement_timeout = '5s'",
+    "set statement_timeout = 5000",
+    "set statement_timeout = 0",
+    "set session statement_timeout = 5000",
+    "set local statement_timeout = 5000; select 1",
+    "set local lock_timeout = 5000",
+    "reset statement_timeout",
     "insert into alerts values (1)",
     "begin",
     "",

@@ -57,7 +57,7 @@ M2 core, following `docs/plans/agent-loop.md` (verified by a reviewer pass, owne
    - Add it as a Codespaces secret for this repo (GitHub, Settings, Codespaces, Secrets): `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`. Restart the Codespace so it loads.
    - Pick a currently free model on OpenRouter and set it in the `openrouter-free-dev` profile in `config/models.toml` (the placeholder may no longer be free).
    - Run on the local database: `DATABASE_URL=<local harness URL> uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v2.json --profile openrouter-free-dev --record`, then score with `evals.aml_agent_score --run <run_dir> --record`. Read 3 traces by hand. Then the dev set.
-Later hardening: a database side statement timeout for the tools and verifier connections (a hung query can hold a connection); separate database roles (read-only tools, insert-only writer) and an external anchor for the latest audit hash; confirm the US or EU host and prices for the `openrouter-eu-us-open` profile before benchmarks.
+Later hardening: separate database roles (read-only tools, insert-only writer) and an external anchor for the latest audit hash; confirm the US or EU host and prices for the `openrouter-eu-us-open` profile before benchmarks.
 Neon smoke test is not needed for this work: the local database, once loaded, has the same data. Do it before the hosted demo.
 Optional later: ruleset v2 that tunes the noisy fan-out and gather-scatter detectors using the development schemes only.
 

@@ -6,6 +6,8 @@
 3. Static tests scan `tools/`: an import allowlist, bans on raw SQL, `text()`, `literal_column`, driver access (`raw_connection`, `.cursor(`, `.connection`), creating engines, removing event hooks and custom operators. Only `db.py` is exempt, and only for the deny constant.
 4. Tests run every tool with sample inputs and check the statements it ran, the outputs for label-like keys, and that results are identical with the labels table emptied.
 
+The only other raw statement allowed is the exact `SET LOCAL statement_timeout = 5000`, sent by `open_readonly` right after the read-only switch and built only from the `STATEMENT_TIMEOUT_MS` constant in `caps.py`: it lets Postgres cancel a slow read (and free its connection) before the 10 s tool timeout, and `SET LOCAL` lasts only for the transaction, so it works through Neon poolers that reject startup options.
+
 **Why a tree walk and not text matching:** the first version parsed SQL text. Review found a new way past it each round (string and comment tricks, parenthesised table lists, functions that run their own query, `table x` forms). Text parsing cannot be made safe. The statement object can be checked exactly.
 
 **Difference from docs/plans/mcp-tools.md:** the plan described a text-matching runtime guard and a file called `registry.py`. The code uses the tree-walking guard above and the file is `query_registry.py`.
