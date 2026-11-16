@@ -4,6 +4,12 @@ Start here in a new chat. This is a summary, not a raw transcript. The repo is p
 
 Update this file at the end of each working session. Do not track setup status here: hosting, database and secrets are managed outside the repo.
 
+## Current state (2026-11-16, end of session)
+- M2 steps 1 to 6 and 8 of `docs/plans/agent-loop.md` are built, reviewed, pushed, CI green (722 tests). Only step 7, the first real scored run, is left for M2.
+- The owner has just added `OPENROUTER_API_KEY` as a Codespaces secret and restarted the Codespace. First thing next session: confirm the key is visible without printing it (for example `test -n "$OPENROUTER_API_KEY" && echo set`), pick a currently free OpenRouter model for the `openrouter-free-dev` profile, then do step 7 (commands below under "Next piece of work").
+- Full transcript of the 2026-11-15/16 session: `.claude-home-backup/transcripts/2026-11-16-m2-build.jsonl` (gitignored, local only). Read this log first; open the transcript only if something here is unclear.
+- Working style that worked well: one builder subagent per step, then the test suite plus an independent reviewer subagent, fix findings, commit. Ask the owner before every push.
+
 ## Where the work stands
 - M1 (Data) is done. The AML slice is loaded into Neon and verified (25,493 transfers, 522 laundering, 64 schemes).
 - The AML rules layer is done and verified on Neon: five detectors (fan-out, fan-in, cycle, scatter-gather, gather-scatter), 171 v1 alerts stored, and the v1 baseline in `evals/baselines/aml_rules_v1.json`. The Neon run produced a byte-identical baseline to the local one.
