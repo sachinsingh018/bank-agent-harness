@@ -17,7 +17,7 @@ from tools.aml.caps import TOOL_TIMEOUT_SECONDS
 from tools.aml.launch import server_params
 
 PROMPTS = Path("modules/aml/prompts")
-INVESTIGATOR_PROMPT = PromptRef(PROMPTS / "investigator_v2.md", "v2")
+INVESTIGATOR_PROMPT = PromptRef(PROMPTS / "investigator_v3.md", "v3")
 CASE_MESSAGE_PROMPT = PromptRef(PROMPTS / "case_message_v1.md", "v1")
 
 

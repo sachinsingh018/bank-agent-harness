@@ -132,7 +132,7 @@ def test_runner_and_scorer_end_to_end(
     ):
         assert key in manifest, key
     assert set(manifest["git"]) == {"commit", "dirty"}
-    assert manifest["prompt"]["version"] == "v2" and len(manifest["prompt"]["sha256"]) == 64
+    assert manifest["prompt"]["version"] == "v3" and len(manifest["prompt"]["sha256"]) == 64
     assert manifest["model"] == {"profile": "scripted", "provider": "scripted", "model": "scripted"}
     assert manifest["dataset"]["ruleset_version"] == EVAL_VERSION
     assert len(manifest["dataset"]["sha256"]) == 64
