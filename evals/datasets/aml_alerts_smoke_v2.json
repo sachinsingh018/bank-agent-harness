@@ -1,0 +1,19 @@
+{
+  "alert_ids": [
+    "AL-0679023ed0bc",
+    "AL-312627b0e05b",
+    "AL-3332102d5f16",
+    "AL-36452a56da3f",
+    "AL-4bb5d6d2e75a",
+    "AL-5367f4350549",
+    "AL-833c795ec18e",
+    "AL-93b39112e77d",
+    "AL-9932c52d88b1",
+    "AL-ff916f59e252"
+  ],
+  "created_by": "evals/make_aml_datasets.py",
+  "dataset": "smoke",
+  "ruleset_version": "v1",
+  "split_seed": 42,
+  "version": "v2"
+}

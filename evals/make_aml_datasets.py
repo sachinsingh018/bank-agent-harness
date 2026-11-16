@@ -14,9 +14,12 @@ Assignment rules (deterministic):
   transfers: "heldout". A tie goes to "heldout" (conservative: never tune on a doubtful alert).
 - Alerts with no laundering transfer in any scheme: the first hex digit of
   sha256("42:<alert_id>") decides. Even: "dev", odd: "heldout".
-- Smoke set: 10 dev alerts. Dev alerts are ordered by sha256(alert_id). The first
-  min(3, dev strict positives) strict positives in that order are taken, then the set is filled
-  with the remaining dev alerts in the same order.
+- Smoke set v2: 10 dev alerts, ordered by sha256(alert_id). In that order it takes up to 2
+  strict positives in the early window (alert window ends on or before 2022-09-10), then up to
+  1 strict positive in the late window, then up to 4 early alerts that are not strict
+  positives, then fills to 10 with the remaining dev alerts in the same order. Smoke v1 (the
+  first 3 strict positives, then fill) stays committed but is no longer generated: dev and
+  heldout stay v1 and regenerate byte-identical.
 """
 
 import argparse
@@ -46,10 +49,12 @@ from harness.db.models import Alert
 from harness.db.session import DatabaseConnectionError, get_database_url, get_engine, run_safely
 
 DATASET_DIR = Path(__file__).parent / "datasets"
-DATASET_VERSION = "v1"
+DATASET_VERSIONS: dict[str, str] = {"dev": "v1", "heldout": "v1", "smoke": "v2"}
 CREATED_BY = "evals/make_aml_datasets.py"
 SMOKE_SIZE = 10
-SMOKE_MIN_STRICT = 3
+SMOKE_EARLY_STRICT = 2
+SMOKE_LATE_STRICT = 1
+SMOKE_EARLY_NEGATIVES = 4
 MIN_STRICT_PER_SET = 15
 LATE_CUTOFF = date(2022, 9, 10)  # decision 0006
 SET_NAMES = ("dev", "heldout", "smoke")
@@ -94,10 +99,19 @@ def assign_alert(alert: ScoredAlert, labels: Mapping[int, Label], split: SchemeS
     return "dev" if dev > held else "heldout"
 
 
-def pick_smoke(dev_ids: Sequence[str], strict_ids: frozenset[str]) -> tuple[str, ...]:
+def pick_smoke(
+    dev_ids: Sequence[str], strict_ids: frozenset[str], early_ids: frozenset[str]
+) -> tuple[str, ...]:
+    """Smoke v2 (see the module docstring). Each quota takes what exists, never more."""
     ordered = sorted(dev_ids, key=lambda a: (_hex(a), a))
-    need = min(SMOKE_MIN_STRICT, sum(1 for a in ordered if a in strict_ids))
-    picks = [a for a in ordered if a in strict_ids][:need]
+    early_strict = [a for a in ordered if a in strict_ids and a in early_ids]
+    late_strict = [a for a in ordered if a in strict_ids and a not in early_ids]
+    early_negative = [a for a in ordered if a not in strict_ids and a in early_ids]
+    picks = [
+        *early_strict[:SMOKE_EARLY_STRICT],
+        *late_strict[:SMOKE_LATE_STRICT],
+        *early_negative[:SMOKE_EARLY_NEGATIVES],
+    ][:SMOKE_SIZE]
     for alert_id in ordered:
         if len(picks) >= SMOKE_SIZE:
             break
@@ -106,20 +120,29 @@ def pick_smoke(dev_ids: Sequence[str], strict_ids: frozenset[str]) -> tuple[str,
     return tuple(sorted(picks))
 
 
-def build_datasets(alerts: Sequence[ScoredAlert], labels: Mapping[int, Label]) -> Datasets:
+def is_early(window_end: datetime) -> bool:
+    return window_end.date() <= LATE_CUTOFF
+
+
+def build_datasets(
+    alerts: Sequence[ScoredAlert],
+    labels: Mapping[int, Label],
+    window_ends: Mapping[str, datetime],
+) -> Datasets:
     split = split_schemes(build_schemes(labels))
     dev: list[str] = []
     held: list[str] = []
     for alert in alerts:
         (dev if assign_alert(alert, labels, split) == "dev" else held).append(alert.alert_id)
     strict = frozenset(a.alert_id for a in alerts if classify_alert(a, labels)[0])
-    return Datasets(tuple(sorted(dev)), tuple(sorted(held)), pick_smoke(dev, strict))
+    early = frozenset(a.alert_id for a in alerts if is_early(window_ends[a.alert_id]))
+    return Datasets(tuple(sorted(dev)), tuple(sorted(held)), pick_smoke(dev, strict, early))
 
 
 def render_dataset(name: str, alert_ids: Sequence[str], ruleset_version: str) -> str:
     body: dict[str, Any] = {
         "dataset": name,
-        "version": DATASET_VERSION,
+        "version": DATASET_VERSIONS[name],
         "ruleset_version": ruleset_version,
         "alert_ids": sorted(alert_ids),
         "created_by": CREATED_BY,
@@ -129,7 +152,7 @@ def render_dataset(name: str, alert_ids: Sequence[str], ruleset_version: str) ->
 
 
 def dataset_path(name: str, out_dir: Path = DATASET_DIR) -> Path:
-    return out_dir / f"aml_alerts_{name}_{DATASET_VERSION}.json"
+    return out_dir / f"aml_alerts_{name}_{DATASET_VERSIONS[name]}.json"
 
 
 def render_all(datasets: Datasets, ruleset_version: str) -> dict[str, str]:
@@ -145,14 +168,25 @@ def summarise(
     window_ends: Mapping[str, datetime],
 ) -> list[str]:
     by_id = {a.alert_id: a for a in alerts}
-    lines = ["set: alerts, strict positives, loose positives, late window (ends after 2022-09-10)"]
+    lines = [
+        "set: alerts, strict positives, loose positives, late window (ends after 2022-09-10), "
+        "early strict positives"
+    ]
     warnings: list[str] = []
     for name, ids in datasets.by_name().items():
         flags = [classify_alert(by_id[a], labels) for a in ids]
         strict = sum(1 for s, _ in flags if s)
         loose = sum(1 for _, lo in flags if lo)
-        late = sum(1 for a in ids if window_ends[a].date() > LATE_CUTOFF)
-        lines.append(f"  {name}: {len(ids)}, {strict}, {loose}, {late}")
+        late = sum(1 for a in ids if not is_early(window_ends[a]))
+        early_strict = sum(
+            1 for a, (s, _) in zip(ids, flags, strict=True) if s and is_early(window_ends[a])
+        )
+        lines.append(f"  {name}: {len(ids)}, {strict}, {loose}, {late}, {early_strict}")
+        if name == "smoke" and early_strict < SMOKE_EARLY_STRICT:
+            warnings.append(
+                f"warning: smoke has {early_strict} early strict positives, fewer than "
+                f"{SMOKE_EARLY_STRICT} (dev has no more)"
+            )
         if name != "smoke" and strict < MIN_STRICT_PER_SET:
             warnings.append(
                 f"warning: {name} has {strict} strict positives, fewer than {MIN_STRICT_PER_SET}"
@@ -206,7 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (DatabaseConnectionError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}")
         return 1
-    datasets = build_datasets(loaded.alerts, loaded.labels)
+    datasets = build_datasets(loaded.alerts, loaded.labels, loaded.window_ends)
     print("\n".join(summarise(datasets, loaded.alerts, loaded.labels, loaded.window_ends)))
     rendered = render_all(datasets, args.ruleset)
     if args.check:

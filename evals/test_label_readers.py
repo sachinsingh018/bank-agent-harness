@@ -120,6 +120,7 @@ def test_dataset_files_hold_only_ids_and_metadata() -> None:
         "aml_alerts_dev_v1.json",
         "aml_alerts_heldout_v1.json",
         "aml_alerts_smoke_v1.json",
+        "aml_alerts_smoke_v2.json",
     }
     for path in files:
         body = json.loads(path.read_text(encoding="utf-8"))
@@ -134,9 +135,11 @@ def test_dataset_files_hold_only_ids_and_metadata() -> None:
 def test_dev_and_heldout_are_disjoint_and_smoke_is_dev() -> None:
     d = ROOT / "evals" / "datasets"
 
-    def ids(name: str) -> set[str]:
-        return set(json.loads((d / f"aml_alerts_{name}_v1.json").read_text())["alert_ids"])
+    def ids(name: str, version: str = "v1") -> set[str]:
+        return set(json.loads((d / f"aml_alerts_{name}_{version}.json").read_text())["alert_ids"])
 
-    dev, held, smoke = ids("dev"), ids("heldout"), ids("smoke")
+    dev, held = ids("dev"), ids("heldout")
     assert not dev & held
-    assert smoke <= dev and len(smoke) == 10
+    for version in ("v1", "v2"):
+        smoke = ids("smoke", version)
+        assert smoke <= dev and len(smoke) == 10

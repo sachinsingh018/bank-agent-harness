@@ -17,6 +17,17 @@ after a turn's investigation calls (wall clock), even when that turn holds a val
 One model call or one turn of tool calls can overshoot a limit by at most one call before the
 check catches it.
 
+Verifiers may read the database, so they run in a worker thread (asyncio.to_thread) under
+asyncio.wait_for with the remaining wall clock time, never less than MIN_VERIFY_SECONDS. A
+timeout ends the case as human_review limit_time; the clock is checked again when the verifiers
+return, so a slow but finished verification past the limit is also limit_time. Python cannot
+kill a thread: a timed out verifier keeps running in the background until it returns, but the
+case result does not wait for it.
+
+A verifier that raises (for example a database error) is an infrastructure failure, not a real
+check failure: the retry is not spent and the case ends as human_review verifier_error, with
+the exception class in the trace.
+
 A module with zero verifiers never gets a proposal: a valid submission then ends as
 human_review internal_error, because a proposal must always be verified output and an empty
 verifier list is a wiring mistake, not evidence that the answer is correct.
@@ -24,6 +35,7 @@ verifier list is a wiring mistake, not evidence that the answer is correct.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -60,7 +72,12 @@ from harness.trace import (
     ToolCallRecord,
     ToolResultContent,
 )
-from harness.verifiers.base import VerifierResult, VerifyContext, run_verifiers
+from harness.verifiers.base import (
+    VerifierResult,
+    VerifierRun,
+    VerifyContext,
+    run_verifiers_detailed,
+)
 
 NO_ANSWER_REMINDER = PromptRef(Path("harness/prompts/no_answer_reminder_v1.md"), "v1")
 REPEAT_NOTE = "(repeat call: same result as before) "
@@ -69,6 +86,7 @@ MAX_SUBMIT_ERRORS = 20
 MAX_ERROR_CHARS = 300
 PARSE_ERROR_MESSAGE = "the tool call arguments were not a valid JSON object"
 ONE_SUBMIT_MESSAGE = "call the submit tool exactly once per turn"
+MIN_VERIFY_SECONDS = 5.0  # verifiers always get at least this long, even near the time limit
 
 
 class ToolSessionLike(Protocol):
@@ -295,7 +313,7 @@ class _Run:
                 results[pos] = await self._investigate(call)
         self._check_time()
         if submits:
-            submit_blocks = iter(self._submit(submits))
+            submit_blocks = iter(await self._submit(submits))
             for pos, call in enumerate(calls):
                 if call.name == submit_name:
                     results[pos] = next(submit_blocks)
@@ -371,7 +389,7 @@ class _Run:
 
     # ---- submission -----------------------------------------------------------------------
 
-    def _submit(self, submits: list[ToolCallBlock]) -> list[ToolResultBlock]:
+    async def _submit(self, submits: list[ToolCallBlock]) -> list[ToolResultBlock]:
         """Validate and verify the submission. Finishes the loop on success or on a second
         failure; otherwise returns error results for the submit calls and spends the retry."""
         verifier_results: list[VerifierResult] = []
@@ -393,7 +411,20 @@ class _Run:
                     # Never propose unverified output (see the module docstring).
                     self._record_tool(submits[0], step=None, content="", ok=True, error_code=None)
                     raise _Finish("internal_error", findings, [])
-                verifier_results = self._verify(output)
+                verified = await self._verify(output, submits[0])
+                verifier_results = verified.results
+                if self.clock() - self.start >= self.limits.max_wall_seconds:
+                    self._record_tool(
+                        submits[0], step=None, content="", ok=False, error_code="timeout"
+                    )
+                    raise _Finish("limit_time", findings, verifier_results)
+                if verified.error_class is not None:
+                    # Infrastructure failure: do not spend the retry on it.
+                    self.error_class = verified.error_class
+                    self._record_tool(
+                        submits[0], step=None, content="", ok=False, error_code="internal"
+                    )
+                    raise _Finish("verifier_error", findings, verifier_results)
                 errors = [
                     f"{r.name}: {e}"[:MAX_ERROR_CHARS]
                     for r in verifier_results
@@ -413,11 +444,31 @@ class _Run:
             raise _Finish(kind, findings, verifier_results)
         return [ToolResultBlock(tool_call_id=c.id, content=content, is_error=True) for c in submits]
 
-    def _verify(self, output: BaseModel) -> list[VerifierResult]:
-        ctx = VerifyContext(
-            case_id=self.case_id, seen_txn_ids=frozenset(self.seen), lookup=self.lookup_factory()
-        )
-        return run_verifiers(self.spec.verifiers, output, ctx)
+    async def _verify(self, output: BaseModel, call: ToolCallBlock) -> VerifierRun:
+        """Run the verifiers in a worker thread, bounded by the remaining wall clock time."""
+        seen = frozenset(self.seen)
+        remaining = self.limits.max_wall_seconds - (self.clock() - self.start)
+        timeout = max(MIN_VERIFY_SECONDS, remaining)
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._verify_sync, output, seen), timeout
+            )
+        except TimeoutError:
+            self._record_tool(call, step=None, content="", ok=False, error_code="timeout")
+            raise _Finish("limit_time") from None
+
+    def _verify_sync(self, output: BaseModel, seen: frozenset[int]) -> VerifierRun:
+        """Runs in the worker thread. A failing lookup factory counts as a verifier error."""
+        try:
+            lookup = self.lookup_factory()
+        except Exception as exc:
+            name = type(exc).__name__
+            failed = VerifierResult(
+                name="lookup", passed=False, errors=[f"verifier error ({name})"]
+            )
+            return VerifierRun(results=[failed], error_class=name)
+        ctx = VerifyContext(case_id=self.case_id, seen_txn_ids=seen, lookup=lookup)
+        return run_verifiers_detailed(self.spec.verifiers, output, ctx)
 
     # ---- result ---------------------------------------------------------------------------
 

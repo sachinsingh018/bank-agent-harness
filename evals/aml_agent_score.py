@@ -73,7 +73,8 @@ GROUNDING_RULE = (
     "run, and cited amounts and currencies match the stored ones). Claims come from proposed "
     "results and from verifier_failed results that kept findings. A citation result that "
     "failed with an error naming no claim or transfer (a crashed verifier) makes every claim "
-    "of that result ungrounded."
+    "of that result ungrounded. verifier_error results (an infrastructure failure inside a "
+    "verifier) count no claims."
 )
 NOTES: tuple[str, ...] = (
     "Truth is strict (at least half of the alert's transfers are laundering). Loose (at least "
@@ -186,7 +187,10 @@ def claim_grounding(
 
 def outcome_from_result(result: CaseResult) -> Outcome:
     findings = result.findings
-    total, grounded = claim_grounding(findings, result.verifier_results)
+    if result.reason == "verifier_error":
+        total, grounded = 0, 0  # the checks did not really run
+    else:
+        total, grounded = claim_grounding(findings, result.verifier_results)
     return Outcome(
         alert_id=result.case_id,
         status=result.status,

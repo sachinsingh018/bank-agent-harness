@@ -58,23 +58,43 @@ def test_no_laundering_uses_hash_parity() -> None:
     )
 
 
-def test_smoke_takes_three_strict_and_fills_to_ten() -> None:
-    dev = [f"AL-{i:02d}" for i in range(30)]
-    ordered = sorted(dev, key=lambda a: (mk._hex(a), a))
-    strict = frozenset(ordered[-5:])  # last in hash order, so the plain first 10 miss them
-    smoke = mk.pick_smoke(dev, strict)
+def _ordered(n: int = 30) -> tuple[list[str], list[str]]:
+    dev = [f"AL-{i:02d}" for i in range(n)]
+    return dev, sorted(dev, key=lambda a: (mk._hex(a), a))
+
+
+def test_smoke_v2_takes_early_and_late_strict_and_early_negatives() -> None:
+    dev, ordered = _ordered()
+    # Strict positives last in hash order, so a plain first 10 would miss them.
+    early_strict = ordered[-6:-3]
+    late_strict = ordered[-3:]
+    strict = frozenset(early_strict + late_strict)
+    early_negatives = ordered[10:16]
+    early = frozenset(early_strict + early_negatives)
+    smoke = mk.pick_smoke(dev, strict, early)
     assert len(smoke) == 10 and list(smoke) == sorted(smoke)
-    assert set(smoke) & strict == set(ordered[-5:-2])
-    assert set(ordered[:7]) <= set(smoke)
+    assert set(smoke) & set(early_strict) == set(early_strict[:2])
+    assert set(smoke) & set(late_strict) == {late_strict[0]}
+    assert set(smoke) & set(early_negatives) == set(early_negatives[:4])
+    assert set(ordered[:3]) <= set(smoke)  # the fill, in hash order
 
 
-def test_smoke_keeps_natural_order_when_strict_is_scarce() -> None:
-    dev = [f"AL-{i:02d}" for i in range(30)]
-    ordered = sorted(dev, key=lambda a: (mk._hex(a), a))
-    assert set(mk.pick_smoke(dev, frozenset())) == set(ordered[:10])
+def test_smoke_v2_uses_what_exists_when_scarce() -> None:
+    dev, ordered = _ordered()
+    assert set(mk.pick_smoke(dev, frozenset(), frozenset())) == set(ordered[:10])
     one = frozenset({ordered[20]})
-    assert set(mk.pick_smoke(dev, one)) == {ordered[20], *ordered[:9]}
-    assert len(mk.pick_smoke(dev[:4], frozenset())) == 4
+    assert set(mk.pick_smoke(dev, one, one)) == {ordered[20], *ordered[:9]}
+    late_only = frozenset({ordered[25], ordered[26]})
+    smoke = set(mk.pick_smoke(dev, late_only, frozenset()))
+    assert smoke == {ordered[25], *ordered[:9]}
+    assert len(mk.pick_smoke(dev[:4], frozenset(), frozenset())) == 4
+
+
+def test_only_smoke_version_is_bumped() -> None:
+    assert mk.DATASET_VERSIONS == {"dev": "v1", "heldout": "v1", "smoke": "v2"}
+    assert mk.dataset_path("smoke").name == "aml_alerts_smoke_v2.json"
+    assert mk.dataset_path("dev").name == "aml_alerts_dev_v1.json"
+    assert json.loads(mk.render_dataset("smoke", ["a"], "v1"))["version"] == "v2"
 
 
 def test_build_is_deterministic_and_a_partition() -> None:
@@ -86,8 +106,9 @@ def test_build_is_deterministic_and_a_partition() -> None:
         _alert("x4", {12}),
         _alert("x5", {4, 8}),
     ]
-    one = mk.build_datasets(alerts, labels)
-    two = mk.build_datasets(list(reversed(alerts)), dict(labels))
+    ends = {a.alert_id: datetime(2022, 9, 1) for a in alerts}
+    one = mk.build_datasets(alerts, labels, ends)
+    two = mk.build_datasets(list(reversed(alerts)), dict(labels), dict(ends))
     assert one == two
     assert set(one.dev) | set(one.heldout) == {a.alert_id for a in alerts}
     assert not set(one.dev) & set(one.heldout)
@@ -115,8 +136,8 @@ def test_summary_warns_on_few_strict_positives() -> None:
     lines = mk.summarise(ds, alerts, labels, ends)
     assert any(line.startswith("warning: dev") for line in lines)
     assert any(line.startswith("warning: heldout") for line in lines)
-    assert not any("warning: smoke" in line for line in lines)
-    assert "  dev: 1, 1, 1, 1" in lines
+    assert any(line.startswith("warning: smoke has 0 early") for line in lines)
+    assert "  dev: 1, 1, 1, 1, 0" in lines
 
 
 def test_module_has_no_write_statements_or_url_printing() -> None:
@@ -139,7 +160,7 @@ def test_builder_on_test_database_partitions_alerts(local_engine: Engine) -> Non
             delete_alerts_for_version_on(conn, version)
             write_alerts_on(conn, drafts, version)
             loaded = mk.load_from_connection(conn, version)
-            ds = mk.build_datasets(loaded.alerts, loaded.labels)
+            ds = mk.build_datasets(loaded.alerts, loaded.labels, loaded.window_ends)
             ids = {a.alert_id for a in loaded.alerts}
             assert len(ids) == len(drafts)
             assert set(ds.dev) | set(ds.heldout) == ids

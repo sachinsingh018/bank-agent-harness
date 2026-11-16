@@ -2,7 +2,9 @@
 
 Verifiers are deterministic plain code: no model calls. run_verifiers runs all of them, never
 stops at the first failure, and turns a crashing verifier into a failed result, so a bug in a
-verifier can never let an output through.
+verifier can never let an output through. run_verifiers_detailed also reports whether any
+verifier raised, so the loop can tell an infrastructure failure (for example a database error)
+from a real check failure.
 """
 
 from __future__ import annotations
@@ -42,18 +44,27 @@ def _crashed(name: str, exc: BaseException) -> VerifierResult:
     )
 
 
-def run_verifiers(
+@dataclass(frozen=True)
+class VerifierRun:
+    results: list[VerifierResult]
+    # Class name of the first exception raised inside a verifier, None when none raised.
+    error_class: str | None
+
+
+def run_verifiers_detailed(
     verifiers: Sequence[Verifier], output: BaseModel, ctx: VerifyContext
-) -> list[VerifierResult]:
-    """Run every verifier in order and return one result each. An exception inside a verifier,
-    or a return value that is not a VerifierResult, becomes a failed result."""
+) -> VerifierRun:
+    """Run every verifier in order: one result each, plus the class of the first exception."""
     results: list[VerifierResult] = []
+    error_class: str | None = None
     for verifier in verifiers:
         name = str(getattr(verifier, "name", type(verifier).__name__))
         try:
             result = verifier.check(output, ctx)
         except Exception as exc:
             results.append(_crashed(name, exc))
+            if error_class is None:
+                error_class = type(exc).__name__
             continue
         if not isinstance(result, VerifierResult):
             results.append(
@@ -61,4 +72,12 @@ def run_verifiers(
             )
             continue
         results.append(result)
-    return results
+    return VerifierRun(results=results, error_class=error_class)
+
+
+def run_verifiers(
+    verifiers: Sequence[Verifier], output: BaseModel, ctx: VerifyContext
+) -> list[VerifierResult]:
+    """Run every verifier in order and return one result each. An exception inside a verifier,
+    or a return value that is not a VerifierResult, becomes a failed result."""
+    return run_verifiers_detailed(verifiers, output, ctx).results

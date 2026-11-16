@@ -4,6 +4,8 @@ The output model and verifier are defined here, so the harness stays module agno
 
 import asyncio
 import json
+import threading
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +14,7 @@ import pytest
 from mcp import StdioServerParameters
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+import harness.loop as loop_module
 from harness.config import HarnessLimits
 from harness.loop import REPEAT_NOTE, collect_txn_ids, run_agent, txn_ids_in_content
 from harness.mcp_client import ToolOutcome
@@ -266,13 +269,51 @@ def test_crashing_verifier_is_a_failure_not_a_pass() -> None:
     script = [
         tool_call_response([_call("lookup", id=7)], id_prefix="a"),
         tool_call_response([_submit()], id_prefix="b"),
-        tool_call_response([_submit()], id_prefix="c"),
     ]
-    result, _, _ = _run(script, spec=_spec((SeenVerifier(), BadVerifier())))
-    assert result.status == "human_review" and result.reason == "verifier_failed"
+    result, adapter, _ = _run(script, spec=_spec((SeenVerifier(), BadVerifier())))
+    # An exception is an infrastructure failure: no retry is spent on it.
+    assert result.status == "human_review" and result.reason == "verifier_error"
+    assert not result.trace.retry_used
+    assert len(adapter.requests) == 2
+    assert result.trace.error_class == "ValueError"
+    assert result.findings == {"verdict": "yes", "txn_ids": [7]}
     assert [r.passed for r in result.verifier_results] == [True, False]
     assert result.verifier_results[1].errors == ["verifier error (ValueError)"]
     assert SECRET not in result.model_dump_json()
+
+
+def test_crashing_lookup_factory_is_verifier_error() -> None:
+    def factory() -> Any:
+        raise ConnectionError(SECRET)
+
+    adapter = ScriptedAdapter(
+        [tool_call_response([_call("lookup", id=7)]), tool_call_response([_submit()])]
+    )
+    result = asyncio.run(
+        run_agent(
+            case_id="C-1",
+            spec=_spec(),
+            adapter=adapter,
+            profile=adapter.profile,
+            tools=FakeTools(),
+            limits=HarnessLimits(),
+            prompt=PROMPT,
+            verify_context_factory=factory,
+        )
+    )
+    assert result.reason == "verifier_error" and not result.trace.retry_used
+    assert result.trace.error_class == "ConnectionError"
+    assert SECRET not in result.model_dump_json()
+
+
+def test_real_check_failure_still_spends_the_retry() -> None:
+    script = [
+        tool_call_response([_call("lookup", id=7)], id_prefix="a"),
+        tool_call_response([_submit(ids=[99])], id_prefix="b"),
+        tool_call_response([_submit(ids=[99])], id_prefix="c"),
+    ]
+    result, _, _ = _run(script)
+    assert result.reason == "verifier_failed" and result.trace.retry_used
 
 
 def test_verify_context_carries_the_case_id() -> None:
@@ -568,6 +609,8 @@ def test_case_result_invariants() -> None:
     with pytest.raises(ValidationError):
         _case(status="closed")
     assert _case(status="human_review", reason="refusal", findings=None).reason == "refusal"
+    with pytest.raises(ValidationError):
+        _case(status="human_review", reason="verifier_error")
 
 
 def test_trace_rejects_unsorted_seen_ids() -> None:
@@ -623,6 +666,76 @@ def test_slow_tool_turn_crossing_clock_is_limit_time() -> None:
     )
     assert result.status == "human_review" and result.reason == "limit_time"
     assert len(adapter.requests) == 1 and len(tools.calls) == 1
+
+
+class NearLimitTools(FakeTools):
+    """Moves the fake clock to just under the 1 second limit during a tool call."""
+
+    def __init__(self, now: list[float]) -> None:
+        super().__init__()
+        self.now = now
+
+    async def call(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+        self.now[0] = 0.98
+        return await super().call(name, arguments)
+
+
+def test_slow_verifier_times_out_as_limit_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(loop_module, "MIN_VERIFY_SECONDS", 0.05)
+    release = threading.Event()
+
+    class SlowVerifier(SeenVerifier):
+        def check(self, output: BaseModel, ctx: VerifyContext) -> VerifierResult:
+            release.wait(5.0)
+            return super().check(output, ctx)
+
+    now = [0.0]
+    adapter = ScriptedAdapter(
+        [tool_call_response([_call("lookup", id=7)]), tool_call_response([_submit()])]
+    )
+
+    async def go() -> tuple[CaseResult, float]:
+        started = time.monotonic()
+        try:
+            result = await run_agent(
+                case_id="C-1",
+                spec=_spec((SlowVerifier(),)),
+                adapter=adapter,
+                profile=adapter.profile,
+                tools=NearLimitTools(now),
+                limits=HarnessLimits(max_wall_seconds=1),
+                prompt=PROMPT,
+                verify_context_factory=lambda: None,
+                clock=lambda: now[0],
+            )
+            return result, time.monotonic() - started
+        finally:
+            release.set()  # let the abandoned worker thread finish
+
+    result, elapsed = asyncio.run(go())
+    assert elapsed < 4.0  # did not wait for the 5 second verifier
+    assert result.status == "human_review" and result.reason == "limit_time"
+    assert not result.trace.retry_used
+    assert result.trace.tool_calls[-1].error_code == "timeout"
+
+
+def test_verifier_finishing_past_the_clock_is_limit_time() -> None:
+    now = [0.0]
+
+    class ClockVerifier(SeenVerifier):
+        def check(self, output: BaseModel, ctx: VerifyContext) -> VerifierResult:
+            now[0] += 400.0
+            return super().check(output, ctx)
+
+    result, adapter, _ = _run(
+        [tool_call_response([_call("lookup", id=7)]), tool_call_response([_submit()])],
+        spec=_spec((ClockVerifier(),)),
+        clock=lambda: now[0],
+    )
+    assert result.status == "human_review" and result.reason == "limit_time"
+    assert result.findings == {"verdict": "yes", "txn_ids": [7]}
+    assert [r.passed for r in result.verifier_results] == [True]
+    assert len(adapter.requests) == 2
 
 
 def test_duplicate_call_ids_are_model_error_and_run_nothing() -> None:

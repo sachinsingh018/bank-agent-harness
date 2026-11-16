@@ -16,7 +16,7 @@ from modules.aml.agent.models import SUBMIT_TOOL_NAME, AmlFindings
 from modules.aml.agent.spec import build_case_message
 
 REMOTE = "postgresql+psycopg://user:secretpw@example.com:5432/somedb"
-SMOKE = Path(__file__).parent / "datasets" / "aml_alerts_smoke_v1.json"
+SMOKE = Path(__file__).parent / "datasets" / "aml_alerts_smoke_v2.json"
 ALERT_ID = "AL-0123456789ab"
 
 

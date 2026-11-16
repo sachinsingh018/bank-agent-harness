@@ -247,6 +247,14 @@ def test_membership_alert_not_found() -> None:
     assert result.errors == ["alert not found"]
 
 
+def test_membership_close_alert_not_found() -> None:
+    claims = [Claim(statement="s", txn_ids=[3])]
+    findings = _findings(claims, recommendation="close")
+    ctx = _ctx(lookup=FakeLookup(STORE, alerts={}))
+    result = _check(AlertMembershipVerifier(), findings, ctx)
+    assert not result.passed and result.errors == ["alert not found"]
+
+
 def test_membership_wrong_alert_id() -> None:
     findings = _findings(alert_id="AL-ffffffffffff", recommendation="close")
     result = _check(AlertMembershipVerifier(), findings)

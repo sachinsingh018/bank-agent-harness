@@ -95,6 +95,8 @@ Rules:
 - Repeated identical calls (same tool, same arguments) are not run again: the cached result is returned with a note that it is a repeat. They still count as a step.
 - A tool error (`invalid_argument`, `not_found`, `too_large`, `internal`, timeout) goes back to the model as an error result and counts as a step.
 - Limits are checked before each model call, right after each model call (token budget) and after a turn's tool calls (wall clock), even when that turn holds a valid submission. One model call or one turn of tool calls can overshoot a limit by at most one call before the check catches it.
+- Verifiers can read the database, so they run in a worker thread (`asyncio.to_thread`) under `asyncio.wait_for` with the remaining wall clock time, never less than 5 seconds (`MIN_VERIFY_SECONDS`). A timeout ends the case as human_review `limit_time`, and the clock is checked again when the verifiers return. A timed out thread cannot be killed: it finishes in the background, and `asyncio.run` waits for it when the whole run ends.
+- A verifier that raises an exception (for example a database error), or a lookup that cannot be opened, is an infrastructure failure, not a real check failure: the retry is not spent and the case ends as human_review `verifier_error` with the exception class in the trace. The scorer counts no claims for grounding on these cases.
 - **Retry budget is one, in total.** The single correction turn is used by whichever comes first: the model ended its turn without `submit_findings`, the submission failed Pydantic validation, or the verifiers failed. The second failure of any kind ends in human_review.
 
 Stop reasons:
@@ -158,7 +160,7 @@ A `Verifier` takes the output, the trace and a read-only lookup, and returns `Ve
 1. **Schema.** Pydantic validation of the submission (in the loop; shares the one retry).
 2. **Citations.** Every cited txn_id exists. Every cited amount equals the stored amount and currency on that side, compared as `Decimal` (so "100.0" equals "100.00"). Every cited txn_id must have appeared in a tool result during this run.
 3. **Arithmetic.** Every `sum` figure equals the exact `Decimal` sum of the cited transfers on that side and currency; every `count` equals the number of distinct cited transfers.
-4. **Module checks.** `escalate` needs at least one claim citing a transfer that belongs to the alert (needs the database, so it is a verifier). The two rules that need no data, `NONE` only with `close`, and `escalate` needs confidence of at least 0.5 while `close` needs below 0.5, live in the `AmlFindings` model validator, so they fail as schema errors and share the one retry.
+4. **Module checks.** The alert must exist, for `close` too, and `escalate` needs at least one claim citing a transfer that belongs to the alert (needs the database, so it is a verifier). The two rules that need no data, `NONE` only with `close`, and `escalate` needs confidence of at least 0.5 while `close` needs below 0.5, live in the `AmlFindings` model validator, so they fail as schema errors and share the one retry.
 
 **Lookup path.** In process, read-only, through the existing guarded door: `build_tool_engine(url)` and `open_readonly` from `tools/aml/db.py`, then the existing query functions (`get_transaction`, and `get_alert` plus `get_alert_transactions` paged to collect the alert's full transfer set). The URL is passed in explicitly by the runner (`DATABASE_URL` in normal runs, `TEST_DATABASE_URL` in tests), so tests never read `DATABASE_URL`. The verifiers never see labels.
 
@@ -166,7 +168,7 @@ A `Verifier` takes the output, the trace and a read-only lookup, and returns `Ve
 
 **Datasets** come from the existing scheme split (`SPLIT_SEED = 42`, 4 development schemes per family) so prompts are tuned on development alerts only and the headline comes from held-out alerts:
 - Every v1 alert is assigned once by `evals/make_aml_datasets.py`: an alert whose laundering transfers mostly belong to development schemes goes to `dev`, mostly held-out goes to `heldout`; alerts with no laundering are split half and half by sha256 of the alert id.
-- `evals/datasets/aml_alerts_dev_v1.json`, `aml_alerts_heldout_v1.json` and `aml_alerts_smoke_v1.json` (10 dev alerts for quick checks). Ids only, no labels in the files. The script is the only dataset code that reads labels and it joins the reader allowlist.
+- `evals/datasets/aml_alerts_dev_v1.json`, `aml_alerts_heldout_v1.json` and `aml_alerts_smoke_v2.json` (10 dev alerts for quick checks, with at least 2 early window strict positives when dev has them; v1 is kept but its 3 strict positives were all late). Ids only, no labels in the files. The script is the only dataset code that reads labels and it joins the reader allowlist.
 - The script prints the number of truly suspicious (strict) alerts in each set. With 39 strict positives among 171 alerts, each full set has about 20; that is the minimum we accept, and anything less is reported.
 
 **Runner** `evals/run_aml_agent.py`: runs a dataset with a named model profile, writes one JSONL record per alert under `evals/runs/<run_id>/` (added to `.gitignore`) plus a manifest: git commit, prompt version and hash, model profile and ids, harness config, dataset version. The database tables come in step 8.
@@ -225,7 +227,7 @@ modules/aml/agent/verifiers.py
 modules/aml/agent/spec.py
 modules/aml/prompts/investigator_v1.md
 evals/make_aml_datasets.py
-evals/datasets/aml_alerts_{dev,heldout,smoke}_v1.json
+evals/datasets/aml_alerts_{dev,heldout}_v1.json, aml_alerts_smoke_{v1,v2}.json
 evals/run_aml_agent.py
 evals/aml_agent_score.py
 evals/test_label_readers.py

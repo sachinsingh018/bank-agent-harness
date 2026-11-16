@@ -26,6 +26,7 @@ HumanReviewReason = Literal[
     "no_answer",
     "schema_failed",
     "verifier_failed",
+    "verifier_error",
     "tool_failure",
     "internal_error",
 ]
@@ -81,8 +82,8 @@ class RunTrace(_Strict):
     retry_used: bool = False
     retry_reason: RetryReason | None = None
     seen_txn_ids: list[int] = []
-    # Class name of the exception behind model_error, tool_failure or internal_error. Never
-    # the message, which may hold request details.
+    # Class name of the exception behind model_error, tool_failure, verifier_error or
+    # internal_error. Never the message, which may hold request details.
     error_class: str | None = None
 
     @model_validator(mode="after")
@@ -119,4 +120,6 @@ class CaseResult(_Strict):
                 raise ValueError("a proposed result needs every verifier to pass")
         elif self.reason is None:
             raise ValueError("a human_review result needs a reason")
+        elif self.reason == "verifier_error" and self.trace.error_class is None:
+            raise ValueError("a verifier_error result needs the exception class in the trace")
         return self

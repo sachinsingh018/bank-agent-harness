@@ -1,7 +1,7 @@
 """Run the AML agent over an eval dataset and write one CaseResult per alert.
 
 Usage (from the repo root):
-    uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v1.json \
+    uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v2.json \
         --profile scripted [--limit N] [--concurrency 1] [--out-dir evals/runs] [--allow-remote]
         [--record]
 

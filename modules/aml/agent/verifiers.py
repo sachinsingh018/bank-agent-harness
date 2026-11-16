@@ -125,7 +125,8 @@ class ArithmeticVerifier:
 
 
 class AlertMembershipVerifier:
-    """The findings are about this case's alert, and escalate cites one of its transfers."""
+    """The findings are about this case's alert, the alert exists (for close too), and
+    escalate cites one of its transfers."""
 
     name = "alert_membership"
 
@@ -135,10 +136,11 @@ class AlertMembershipVerifier:
         errors: list[str] = []
         if findings.alert_id != ctx.case_id:
             errors.append("alert_id does not match the alert being investigated")
-        if findings.recommendation == "escalate":
-            members = lookup.alert_txn_ids(ctx.case_id)
-            if members is None:
-                errors.append("alert not found")
-            elif not any(set(claim.txn_ids) & members for claim in findings.claims):
-                errors.append("escalate needs at least one claim citing a transfer in the alert")
+        members = lookup.alert_txn_ids(ctx.case_id)
+        if members is None:
+            errors.append("alert not found")
+        elif findings.recommendation == "escalate" and not any(
+            set(claim.txn_ids) & members for claim in findings.claims
+        ):
+            errors.append("escalate needs at least one claim citing a transfer in the alert")
         return _result(self.name, errors)
