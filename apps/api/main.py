@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from apps.api.queue import router as queue_router
+
 app = FastAPI(title="Bank Agent Harness API")
+app.include_router(queue_router)
 
 
 class HealthResponse(BaseModel):

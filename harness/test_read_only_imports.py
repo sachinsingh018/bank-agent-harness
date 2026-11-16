@@ -1,8 +1,9 @@
 """The agent side of the harness never touches the database directly (plan section 10).
 
 Only harness/records.py, harness/db/ and the eval scripts (evals/run_aml_agent.py,
-evals/aml_agent_score.py) touch the write path. harness/runner.py gets a recorder callable
-from the eval runner and imports no database code (decision 0007)."""
+evals/aml_agent_score.py) touch the write path, plus the approval queue API (apps/api/queue.py
+and apps/api/deps.py), which is the human decision path outside the agent. harness/runner.py gets a
+recorder callable from the eval runner and imports no database code (decision 0007)."""
 
 import ast
 from collections.abc import Iterator
@@ -15,6 +16,9 @@ WRITE_PATH_EXEMPT = (HARNESS / "records.py",)
 RECORDS_IMPORTERS = {
     ROOT / "evals" / "run_aml_agent.py",
     ROOT / "evals" / "aml_agent_score.py",
+    # The human approval flow: appends approved or rejected events, never agent code.
+    ROOT / "apps" / "api" / "queue.py",
+    ROOT / "apps" / "api" / "deps.py",
 }
 FORBIDDEN = ("harness.db", "sqlalchemy", "psycopg")
 CHECKED = (
@@ -106,7 +110,7 @@ def test_agent_side_cannot_reach_the_write_path() -> None:
     assert not offenders, "\n".join(offenders)
 
 
-def test_only_the_eval_scripts_import_the_records_module() -> None:
+def test_only_the_eval_scripts_and_the_queue_api_import_the_records_module() -> None:
     importers = set()
     for top in ("harness", "modules", "evals", "tools", "apps", "data", "migrations"):
         for path in _code(ROOT / top):
