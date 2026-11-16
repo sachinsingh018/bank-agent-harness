@@ -1,0 +1,99 @@
+// Small display helpers and a defensive reader for the findings JSON.
+
+export function formatTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+}
+
+export function formatConfidence(value: number | null): string {
+  return value === null ? "" : value.toFixed(2);
+}
+
+export function formatStatus(status: string, reason: string | null): string {
+  if (status === "human_review") {
+    return reason ? `human review (${reason.replaceAll("_", " ")})` : "human review";
+  }
+  return status;
+}
+
+export interface CitedAmount {
+  txn_id: number;
+  side: string;
+  value: string;
+  currency: string;
+}
+
+export interface Claim {
+  statement: string;
+  txn_ids: number[];
+  amounts: CitedAmount[];
+}
+
+export interface Figure {
+  kind: string;
+  value: string;
+  currency: string | null;
+  side: string | null;
+  txn_ids: number[];
+}
+
+export interface Findings {
+  narrative: string;
+  claims: Claim[];
+  figures: Figure[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function str(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function optStr(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function ids(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is number => typeof v === "number" && Number.isInteger(v))
+    : [];
+}
+
+function records(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+export function readFindings(findings: Record<string, unknown> | null): Findings | null {
+  if (findings === null) return null;
+  return {
+    narrative: str(findings.narrative),
+    claims: records(findings.claims).map((c) => ({
+      statement: str(c.statement),
+      txn_ids: ids(c.txn_ids),
+      amounts: records(c.amounts).map((a) => ({
+        txn_id: typeof a.txn_id === "number" ? a.txn_id : 0,
+        side: str(a.side),
+        value: str(a.value),
+        currency: str(a.currency),
+      })),
+    })),
+    figures: records(findings.figures).map((f) => ({
+      kind: str(f.kind),
+      value: str(f.value),
+      currency: optStr(f.currency),
+      side: optStr(f.side),
+      txn_ids: ids(f.txn_ids),
+    })),
+  };
+}
+
+export function findingText(findings: Record<string, unknown> | null, key: string): string {
+  if (findings === null) return "";
+  const value = findings[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return value.toFixed(2);
+  return "";
+}
