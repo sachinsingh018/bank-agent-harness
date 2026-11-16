@@ -1,6 +1,6 @@
 """Test helper: remove the records a test wrote, so the local test database stays tidy.
 
-case_events, agent_runs and model_calls refuse DELETE, so the cleanup turns their user
+case_events, agent_runs, model_calls and corrections refuse DELETE, so the cleanup turns their user
 triggers off inside one transaction (allowed for the table owner, the local postgres test
 role), deletes only the rows added after the snapshot (the tail of the chain, so the chain
 stays valid) and turns the triggers back on. Tests only: it refuses any engine whose URL is
@@ -13,10 +13,10 @@ from dataclasses import dataclass
 
 from sqlalchemy import Engine, delete, func, select, text
 
-from harness.db.records_models import AgentRun, CaseEvent, EvalResult, EvalRun
+from harness.db.records_models import AgentRun, CaseEvent, Correction, EvalResult, EvalRun
 from harness.db.session import is_local_url
 
-APPEND_ONLY_TABLES = ("case_events", "agent_runs", "model_calls")
+APPEND_ONLY_TABLES = ("case_events", "agent_runs", "model_calls", "corrections")
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,13 @@ def remove_since(engine: Engine, snap: RecordsSnapshot) -> None:
     with engine.begin() as conn:
         for table in APPEND_ONLY_TABLES:
             conn.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER USER"))
+        # Corrections point at events and runs, so they go first.
+        conn.execute(
+            delete(Correction).where(
+                (Correction.decision_event_id > snap.max_event_id)
+                | Correction.run_id.not_in(snap.run_ids)
+            )
+        )
         conn.execute(delete(CaseEvent).where(CaseEvent.id > snap.max_event_id))
         conn.execute(delete(AgentRun).where(AgentRun.run_id.not_in(snap.run_ids)))
         for table in APPEND_ONLY_TABLES:

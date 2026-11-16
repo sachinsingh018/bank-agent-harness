@@ -127,7 +127,7 @@ def test_case_events_refuse_update_delete_and_truncate(harness_engine: Engine) -
             for sql in (
                 "UPDATE case_events SET payload = '{}'::jsonb WHERE case_id = :c",
                 "DELETE FROM case_events WHERE case_id = :c",
-                "TRUNCATE case_events",
+                "TRUNCATE case_events CASCADE",  # corrections reference case_events
             ):
                 with pytest.raises(DBAPIError, match="append-only"):
                     with conn.begin_nested():

@@ -6,6 +6,7 @@ and apps/api/deps.py), which is the human decision path outside the agent. harne
 recorder callable from the eval runner and imports no database code (decision 0007)."""
 
 import ast
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -16,7 +17,7 @@ WRITE_PATH_EXEMPT = (HARNESS / "records.py",)
 RECORDS_IMPORTERS = {
     ROOT / "evals" / "run_aml_agent.py",
     ROOT / "evals" / "aml_agent_score.py",
-    # The human approval flow: appends approved or rejected events, never agent code.
+    # The human approval flow: appends decision events, never agent code.
     ROOT / "apps" / "api" / "queue.py",
     ROOT / "apps" / "api" / "deps.py",
 }
@@ -128,3 +129,24 @@ def test_only_tests_import_tests_support() -> None:
             if any(n == "tests_support" or n.startswith("tests_support.") for n in names):
                 importers.append(str(path.relative_to(ROOT)))
     assert not importers, importers
+
+
+CORRECTIONS_WORD = re.compile(r"\bcorrections?\b", re.IGNORECASE)
+
+
+def test_agent_side_never_mentions_the_corrections_table() -> None:
+    """Corrections are stored but not used by the agent yet (docs/plans/edits-and-corrections.md):
+    no harness file outside harness/db/, and no file in modules/aml/agent/, imports the
+    Correction model or mentions the corrections table."""
+    db_dir = HARNESS / "db"
+    files = [p for p in _code(HARNESS) if db_dir not in p.parents]
+    files += _code(ROOT / "modules" / "aml" / "agent")
+    assert HARNESS / "loop.py" in files and HARNESS / "records.py" in files
+    offenders: list[str] = []
+    for path in files:
+        if CORRECTIONS_WORD.search(path.read_text(encoding="utf-8")):
+            offenders.append(f"{path.relative_to(ROOT)}: mentions corrections")
+        for name in _imports_with_names(path):
+            if name.endswith(".Correction"):
+                offenders.append(f"{path.relative_to(ROOT)}: {name}")
+    assert not offenders, "\n".join(offenders)

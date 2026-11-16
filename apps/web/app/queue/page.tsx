@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ApiError, getQueue, type QueuePage, type QueueState } from "../../lib/api";
-import { formatConfidence, formatStatus, formatTime } from "../../lib/format";
+import { decisionLabel, formatConfidence, formatStatus, formatTime } from "../../lib/format";
 
 const TABS: { state: QueueState; label: string }[] = [
   { state: "waiting", label: "Waiting" },
@@ -97,7 +97,7 @@ export default async function QueuePageView({
                   <td>{formatTime(item.created_at)}</td>
                   <td>
                     {item.decision
-                      ? `${item.decision.decision} by ${item.decision.actor.replace(/^human:/, "")}`
+                      ? `${decisionLabel(item.decision.decision)} by ${item.decision.actor.replace(/^human:/, "")}`
                       : "waiting"}
                   </td>
                 </tr>

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from apps.api import deps
+from apps.api.corrections import CorrectionIn
 from apps.api.deps import ReviewerSettings, valid_reviewer_name
 from apps.api.queue import (
     DISABLED,
@@ -155,3 +156,42 @@ def test_tool_engine_unset_url_is_503(monkeypatch: pytest.MonkeyPatch) -> None:
         assert info.value.status_code == 503
     finally:
         deps._tool_engine.cache_clear()
+
+
+EDITS = {"recommendation": "close", "confidence": 0.2, "typology": "NONE", "narrative": "Fine."}
+
+
+def test_approve_with_edits_needs_a_note_and_edits() -> None:
+    body = DecisionRequest.model_validate(
+        {"decision": "approve_with_edits", "note": " why ", "edits": EDITS}
+    )
+    assert body.note == "why" and body.edits is not None
+    for bad in (
+        {"decision": "approve_with_edits", "edits": EDITS},
+        {"decision": "approve_with_edits", "note": "why"},
+        {"decision": "approve", "edits": EDITS},
+        {"decision": "approve_with_edits", "note": "why", "edits": {**EDITS, "extra": 1}},
+        {"decision": "approve_with_edits", "note": "why", "edits": {**EDITS, "confidence": 2}},
+    ):
+        with pytest.raises(ValidationError):
+            DecisionRequest.model_validate(bad)
+
+
+def test_correction_rule_refuses_dates_months_and_years() -> None:
+    for rule in (
+        "Activity after 2022 is noise.",
+        "Ignore anything from Sept onwards.",
+        "Transfers on 2022-09-11 look odd.",
+        "Transfers on 11/09/2022 look odd.",
+        "Transfers on 5 May look odd.",
+        "Transfers in DECEMBER look odd.",
+    ):
+        with pytest.raises(ValidationError, match="decision 0006"):
+            CorrectionIn(kind="other", rule=rule)
+    ok = CorrectionIn(kind="typology", rule="  Payroll may look like fan-out, amounts 10.50.  ")
+    assert ok.rule == "Payroll may look like fan-out, amounts 10.50."
+    for rule in ("short", "x" * 501):
+        with pytest.raises(ValidationError):
+            CorrectionIn(kind="other", rule=rule)
+    with pytest.raises(ValidationError):
+        CorrectionIn.model_validate({"kind": "date", "rule": "A long enough lesson."})

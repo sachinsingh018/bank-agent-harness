@@ -213,6 +213,34 @@ form.decision fieldset {
   flex-wrap: wrap;
 }
 
+form.decision fieldset.stacked {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+form.decision fieldset.stacked label {
+  display: block;
+  margin-top: 0.5rem;
+}
+
+form.decision select,
+form.decision input[type="number"] {
+  font: inherit;
+  padding: 0.3rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.site-header nav {
+  display: flex;
+  gap: 1rem;
+}
+
 form.decision textarea {
   width: 100%;
   min-height: 6rem;

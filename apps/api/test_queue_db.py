@@ -14,7 +14,8 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.exc import DBAPIError
 
 from apps.api.deps import (
     ReviewerSettings,
@@ -23,8 +24,8 @@ from apps.api.deps import (
     get_tool_engine,
 )
 from apps.api.main import app
-from harness.db.models import Transaction
-from harness.db.records_models import CaseEvent
+from harness.db.models import AlertTransaction, Transaction
+from harness.db.records_models import CaseEvent, Correction
 from harness.models.config import get_profile
 from harness.models.types import Usage
 from harness.prompts import load_prompt
@@ -35,6 +36,7 @@ from modules.aml.agent.spec import AML_SPEC
 from tests_support.aml_db import local_url
 from tests_support.records_db import records_cleaned
 from tools.aml.db import build_tool_engine
+from tools.aml.query_registry import Samples
 
 TOKEN = "test-reviewer-token"
 HEADERS = {"X-Reviewer-Token": TOKEN}
@@ -389,3 +391,292 @@ def test_cited_transfer_lookups_are_capped(
     assert len(body["cited_transfers"]) + len(body["missing_txn_ids"]) == 100
     assert body["not_fetched_txn_ids"] == sorted([*fake, MISSING_TXN])[98:]
     assert len(body["not_fetched_txn_ids"]) == 8
+
+
+# ------------------------------------------------------------ approve with edits
+
+
+@dataclass(frozen=True)
+class EditRun:
+    run_id: str
+    alert_id: str
+
+
+def _alert_findings(alert_id: str, txns: list[Txn]) -> dict[str, Any]:
+    """Findings that pass every AML verifier: a real alert, two of its transfers, an exact
+    cited amount and a correct count."""
+    ids = [t.txn_id for t in txns]
+    return {
+        "alert_id": alert_id,
+        "recommendation": "escalate",
+        "confidence": 0.8,
+        "typology": "FAN-OUT",
+        "narrative": "Agent narrative.",
+        "claims": [
+            {
+                "statement": "Two transfers in the alert.",
+                "txn_ids": ids,
+                "amounts": [
+                    {
+                        "txn_id": txns[0].txn_id,
+                        "side": "paid",
+                        "value": format(txns[0].amt_paid, "f"),
+                        "currency": txns[0].cur_paid,
+                    }
+                ],
+            }
+        ],
+        "figures": [{"kind": "count", "value": "2", "txn_ids": ids}],
+    }
+
+
+def _record(engine: Engine, case_id: str, findings: dict[str, Any]) -> str:
+    result = CaseResult(
+        case_id=case_id,
+        status="proposed",
+        reason=None,
+        findings=findings,
+        verifier_results=[VerifierResult(name="citations", passed=True, errors=[])],
+        totals=Usage(input_tokens=120, output_tokens=30),
+        cost_usd="0",
+        tool_steps=2,
+        wall_ms=40,
+        trace=_trace(case_id),
+    )
+    with engine.connect() as conn:
+        return record_case_result(
+            conn, result, profile=get_profile("scripted"), prompt=load_prompt(AML_SPEC.prompt)
+        )
+
+
+@pytest.fixture()
+def edit_runs(
+    records_engine: Engine, harness_samples: Samples
+) -> Iterator[tuple[EditRun, EditRun]]:
+    """A run whose findings pass the verifiers, and one whose findings cite a missing txn.
+    The alert comes from the rules, written under a test ruleset version (harness/conftest.py).
+    """
+    alert_id = harness_samples.alert_id
+    with records_engine.connect() as conn:
+        rows = conn.execute(
+            select(
+                Transaction.txn_id, Transaction.amt_paid, Transaction.cur_paid, Transaction.amt_recv
+            )
+            .join(AlertTransaction, AlertTransaction.txn_id == Transaction.txn_id)
+            .where(AlertTransaction.alert_id == alert_id)
+            .order_by(Transaction.txn_id)
+            .limit(2)
+        ).all()
+    assert len(rows) == 2, "the test alert has fewer than two transfers"
+    txns = [Txn(r.txn_id, r.amt_paid, r.cur_paid, r.amt_recv) for r in rows]
+    good = _alert_findings(alert_id, txns)
+    bad = _alert_findings(alert_id, txns)
+    bad["claims"][0]["txn_ids"] = [*bad["claims"][0]["txn_ids"], MISSING_SMALL]
+    with records_cleaned(records_engine):
+        yield (
+            EditRun(_record(records_engine, alert_id, good), alert_id),
+            EditRun(_record(records_engine, alert_id, bad), alert_id),
+        )
+
+
+EDITS = {
+    "recommendation": "close",
+    "confidence": 0.3,
+    "typology": "NONE",
+    "narrative": "Regular payroll, not laundering.",
+}
+
+
+def _events(engine: Engine, run_id: str) -> list[str]:
+    with engine.connect() as conn:
+        return list(
+            conn.execute(
+                select(CaseEvent.event).where(CaseEvent.run_id == run_id).order_by(CaseEvent.id)
+            ).scalars()
+        )
+
+
+def _corrections(engine: Engine, run_id: str) -> list[Any]:
+    with engine.connect() as conn:
+        return list(conn.execute(select(Correction).where(Correction.run_id == run_id)).all())
+
+
+def test_approve_with_edits_writes_an_edited_event_and_a_correction(
+    client: TestClient, edit_runs: tuple[EditRun, EditRun], records_engine: Engine
+) -> None:
+    good, _ = edit_runs
+    response = client.post(
+        f"/runs/{good.run_id}/decision",
+        json={
+            "decision": "approve_with_edits",
+            "note": "payroll pattern",
+            "edits": EDITS,
+            "correction": {
+                "kind": "typology",
+                "rule": "Regular payroll from one employer to many staff is not fan-out.",
+            },
+        },
+        headers=HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["event"] == "edited" and body["correction_id"] is not None
+    with records_engine.connect() as conn:
+        event = conn.execute(
+            select(CaseEvent).where(CaseEvent.run_id == good.run_id, CaseEvent.event == "edited")
+        ).one()
+        assert event.payload["decision"] == "approve_with_edits"
+        assert event.payload["note"] == "payroll pattern"
+        assert event.payload["edited"] == EDITS
+        assert event.payload["original"] == {
+            "recommendation": "escalate",
+            "confidence": 0.8,
+            "typology": "FAN-OUT",
+            "narrative": "Agent narrative.",
+        }
+        assert [v["passed"] for v in event.payload["verifier_results"]] == [True, True, True]
+        report = verify_chain(conn, check_runs=True)
+        assert report.ok and report.run_mismatch_ids == []
+    saved = _corrections(records_engine, good.run_id)
+    assert len(saved) == 1
+    assert saved[0].decision_event_id == event.id and saved[0].id == body["correction_id"]
+    assert (saved[0].module, saved[0].case_id, saved[0].kind) == ("aml", good.alert_id, "typology")
+    assert saved[0].author == "human:test reviewer"
+
+    assert good.run_id in _queue_ids(client, "decided")
+    detail = client.get(f"/runs/{good.run_id}").json()
+    assert detail["decision"]["decision"] == "approve_with_edits"
+    again = client.post(
+        f"/runs/{good.run_id}/decision", json={"decision": "approve"}, headers=HEADERS
+    )
+    assert again.status_code == 409
+
+    listed = client.get("/corrections", params={"module": "aml", "limit": 100}).json()
+    assert body["correction_id"] in [c["id"] for c in listed["items"]]
+    assert client.get("/corrections", params={"module": "kyb"}).json()["items"] == []
+
+
+def test_invalid_edits_are_refused_and_nothing_is_written(
+    client: TestClient, edit_runs: tuple[EditRun, EditRun], records_engine: Engine
+) -> None:
+    good, bad = edit_runs
+    cases = [
+        (good.run_id, {**EDITS, "recommendation": "escalate", "confidence": 0.8}, "NONE"),
+        (
+            good.run_id,
+            {**EDITS, "recommendation": "escalate", "typology": "FAN-OUT", "confidence": 0.4},
+            "0.5",
+        ),
+        (
+            bad.run_id,
+            {**EDITS, "recommendation": "escalate", "typology": "FAN-OUT", "confidence": 0.9},
+            "does not exist",
+        ),
+    ]
+    for run_id, edits, expected in cases:
+        response = client.post(
+            f"/runs/{run_id}/decision",
+            json={
+                "decision": "approve_with_edits",
+                "note": "fixing it",
+                "edits": edits,
+                "correction": {"kind": "other", "rule": "A lesson that is long enough."},
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 422, response.text
+        detail = response.json()["detail"]
+        assert isinstance(detail, list) and any(expected in e for e in detail), detail
+        assert _events(records_engine, run_id) == ["proposal_created"]
+        assert _corrections(records_engine, run_id) == []
+
+    no_note = client.post(
+        f"/runs/{good.run_id}/decision",
+        json={"decision": "approve_with_edits", "edits": EDITS},
+        headers=HEADERS,
+    )
+    assert no_note.status_code == 422
+    edits_with_approve = client.post(
+        f"/runs/{good.run_id}/decision",
+        json={"decision": "approve", "edits": EDITS},
+        headers=HEADERS,
+    )
+    assert edits_with_approve.status_code == 422
+    assert _events(records_engine, good.run_id) == ["proposal_created"]
+
+
+def test_correction_with_a_date_is_refused(
+    client: TestClient, runs: Runs, records_engine: Engine
+) -> None:
+    for rule in (
+        "Ignore transfers made after 2022-09-11 in this data.",
+        "Transfers in September are mostly noise here.",
+        "Late transfers from 11/09/2022 are an artifact.",
+    ):
+        response = client.post(
+            f"/runs/{runs.close}/decision",
+            json={"decision": "approve", "correction": {"kind": "other", "rule": rule}},
+            headers=HEADERS,
+        )
+        assert response.status_code == 422
+        assert "decision 0006" in response.text
+    assert _events(records_engine, runs.close) == ["proposal_created"]
+    assert _corrections(records_engine, runs.close) == []
+
+    ok = client.post(
+        f"/runs/{runs.close}/decision",
+        json={
+            "decision": "approve",
+            "correction": {"kind": "recommendation", "rule": "Small one-off transfers can close."},
+        },
+        headers=HEADERS,
+    )
+    assert ok.status_code == 200
+    assert ok.json()["event"] == "approved"
+    assert len(_corrections(records_engine, runs.close)) == 1
+
+
+def test_corrections_list_pages_and_corrections_are_append_only(
+    client: TestClient, runs: Runs, records_engine: Engine
+) -> None:
+    ids = []
+    for run_id, decision, note in (
+        (runs.escalate, "approve", None),
+        (runs.review, "reject", "no evidence"),
+    ):
+        response = client.post(
+            f"/runs/{run_id}/decision",
+            json={
+                "decision": decision,
+                "note": note,
+                "correction": {"kind": "evidence", "rule": f"Lesson for run {run_id[:8]}."},
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 200, response.text
+        ids.append(response.json()["correction_id"])
+
+    seen: list[int] = []
+    cursor: str | None = None
+    for _ in range(50):
+        params: dict[str, Any] = {"limit": 1, "module": "aml"}
+        if cursor:
+            params["cursor"] = cursor
+        page = client.get("/corrections", params=params).json()
+        seen.extend(c["id"] for c in page["items"])
+        cursor = page["next_cursor"]
+        if set(ids) <= set(seen) or cursor is None:
+            break
+    assert seen[:2] == [ids[1], ids[0]]  # newest first
+    assert client.get("/corrections", params={"limit": 101}).status_code == 422
+    assert client.get("/corrections", params={"cursor": "bad!"}).status_code == 422
+    assert client.get("/corrections", params={"module": "AML;"}).status_code == 422
+
+    for statement in (
+        "UPDATE corrections SET rule = 'changed rule text' WHERE id = :id",
+        "DELETE FROM corrections WHERE id = :id",
+        "TRUNCATE corrections",
+    ):
+        with pytest.raises(DBAPIError, match="append-only"):
+            with records_engine.begin() as conn:
+                conn.execute(text(statement), {"id": ids[0]})

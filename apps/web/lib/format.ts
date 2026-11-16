@@ -97,3 +97,32 @@ export function findingText(findings: Record<string, unknown> | null, key: strin
   if (typeof value === "number") return value.toFixed(2);
   return "";
 }
+
+// Choices for the "approve with edits" form. The API checks the values with the module's
+// output model, so these lists only make the form easier to fill in.
+export const RECOMMENDATIONS = ["escalate", "close"] as const;
+export const TYPOLOGIES = [
+  "FAN-OUT",
+  "FAN-IN",
+  "CYCLE",
+  "SCATTER-GATHER",
+  "GATHER-SCATTER",
+  "STACK",
+  "BIPARTITE",
+  "RANDOM",
+  "NONE",
+] as const;
+export const CORRECTION_KINDS = [
+  "recommendation",
+  "typology",
+  "confidence",
+  "evidence",
+  "other",
+] as const;
+
+export function decisionLabel(decision: string): string {
+  if (decision === "approve") return "Approved";
+  if (decision === "reject") return "Rejected";
+  if (decision === "approve_with_edits") return "Approved with edits";
+  return decision;
+}

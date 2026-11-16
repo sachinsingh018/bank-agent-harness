@@ -2,8 +2,10 @@
 
 The agent proposes, a person decides (four-eyes). Reads of runs and events use the records
 connection; cited transfers are read through the guarded tool door (get_transaction). The
-only write is one approved or rejected event in the append-only audit log, through
-harness.records.append_case_event, and only when the server has a reviewer configured.
+only writes are one decision event (approved, rejected or edited) in the append-only audit
+log, through harness.records.append_case_event, plus an optional correction in the same
+transaction, and only when the server has a reviewer configured. Edited findings must pass the
+module's output model and deterministic verifiers first (apps/api/edits.py).
 Errors are generic and never carry database details.
 """
 
@@ -23,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from sqlalchemy import Connection, Engine, func, select, tuple_
 from sqlalchemy.exc import SQLAlchemyError
 
+from apps.api.corrections import CorrectionIn, insert_correction
 from apps.api.deps import (
     ReviewerSettings,
     get_records_engine,
@@ -30,7 +33,8 @@ from apps.api.deps import (
     get_tool_engine,
     valid_reviewer_name,
 )
-from harness.db.records_models import AgentRun, CaseEvent, ModelCall
+from apps.api.edits import FindingsEdits, check_edits
+from harness.db.records_models import AgentRun, CaseEvent, Correction, ModelCall
 from harness.db.session import DatabaseConnectionError
 from harness.records import CASE_EVENTS_LOCK_KEY, append_case_event
 from tools.aml.db import open_readonly
@@ -40,11 +44,15 @@ from tools.aml.queries import get_transaction
 
 router = APIRouter()
 
-DECISION_EVENTS = ("approved", "rejected")
-Decision = Literal["approve", "reject"]
-DecisionEvent = Literal["approved", "rejected"]
-EVENT_FOR: dict[Decision, DecisionEvent] = {"approve": "approved", "reject": "rejected"}
-DECISION_FOR: dict[str, Decision] = {"approved": "approve", "rejected": "reject"}
+DECISION_EVENTS = ("approved", "rejected", "edited")
+Decision = Literal["approve", "reject", "approve_with_edits"]
+DecisionEvent = Literal["approved", "rejected", "edited"]
+EVENT_FOR: dict[Decision, DecisionEvent] = {
+    "approve": "approved",
+    "reject": "rejected",
+    "approve_with_edits": "edited",
+}
+DECISION_FOR: dict[str, Decision] = {v: k for k, v in EVENT_FOR.items()}
 MAX_NOTE = 2000
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
@@ -177,6 +185,8 @@ class DecisionRequest(BaseModel):
 
     decision: Decision
     note: Annotated[str, Field(max_length=MAX_NOTE)] | None = None
+    edits: FindingsEdits | None = None  # required for approve_with_edits, refused otherwise
+    correction: CorrectionIn | None = None  # an optional lesson, with any decision
 
     @model_validator(mode="after")
     def _note_rules(self) -> Self:
@@ -184,6 +194,13 @@ class DecisionRequest(BaseModel):
             self.note = self.note.strip() or None
         if self.decision == "reject" and self.note is None:
             raise ValueError("a rejection needs a note")
+        if self.decision == "approve_with_edits":
+            if self.note is None:
+                raise ValueError("an approval with edits needs a note")
+            if self.edits is None:
+                raise ValueError("an approval with edits needs the edited fields")
+        elif self.edits is not None:
+            raise ValueError("edits are only allowed with approve_with_edits")
         return self
 
 
@@ -193,6 +210,24 @@ class DecisionResponse(_Out):
     event: DecisionEvent
     actor: str
     hash: str
+    correction_id: int | None
+
+
+class CorrectionOut(_Out):
+    id: int
+    created_at: datetime
+    module: str
+    case_id: str
+    run_id: str
+    decision_event_id: int
+    kind: str
+    rule: str
+    author: str
+
+
+class CorrectionsPage(_Out):
+    items: list[CorrectionOut]
+    next_cursor: str | None
 
 
 # ------------------------------------------------------------------------- helpers
@@ -475,15 +510,67 @@ def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunD
     )
 
 
+@router.get("/corrections", response_model=CorrectionsPage)
+def list_corrections(
+    engine: RecordsEngine,
+    module: Annotated[str | None, Query(pattern=r"^[a-z]{1,20}$")] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    cursor: Annotated[str | None, Query(max_length=400)] = None,
+) -> CorrectionsPage:
+    """Saved lessons, newest first. Nothing in the agent reads them yet."""
+    stmt = select(Correction.__table__)
+    if cursor:
+        at, raw_id = decode_cursor(cursor)
+        if not raw_id.isdigit():
+            raise HTTPException(status_code=422, detail="invalid cursor")
+        stmt = stmt.where(tuple_(Correction.created_at, Correction.id) < tuple_(at, int(raw_id)))
+    if module is not None:
+        stmt = stmt.where(Correction.module == module)
+    stmt = stmt.order_by(Correction.created_at.desc(), Correction.id.desc()).limit(limit + 1)
+
+    def work() -> list[CorrectionOut]:
+        with engine.connect() as conn:
+            return [CorrectionOut.model_validate(r._asdict()) for r in conn.execute(stmt).all()]
+
+    rows = _safely(work)
+    items = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit:
+        next_cursor = encode_cursor(items[-1].created_at, str(items[-1].id))
+    return CorrectionsPage(items=items, next_cursor=next_cursor)
+
+
 @router.post("/runs/{run_id}/decision", response_model=DecisionResponse)
 def decide(
     run_id: str,
     body: DecisionRequest,
     engine: RecordsEngine,
+    tool_engine: ToolEngine,
     reviewer: Annotated[str, Depends(require_reviewer)],
 ) -> DecisionResponse:
     event = EVENT_FOR[body.decision]
     actor = f"human:{reviewer}"
+    payload: dict[str, Any] = {"decision": body.decision, "note": body.note}
+
+    if body.edits is not None:
+        edits = body.edits
+
+        def read_run() -> Any:
+            with engine.connect() as conn:
+                return _load_run(conn, run_id)
+
+        stored = _safely(read_run)
+        check = check_edits(stored.module, stored.case_id, stored.findings, edits, tool_engine)
+        if check.infrastructure_error:
+            raise HTTPException(status_code=503, detail=DB_ERROR)
+        if check.errors:
+            # Nothing is written: the edited answer must pass the same checks as the agent's.
+            raise HTTPException(status_code=422, detail=check.errors)
+        payload |= {
+            "edited": check.edited,
+            "original": check.original,
+            "verifier_results": [r.model_dump() for r in check.verifier_results],
+        }
 
     def work() -> DecisionResponse:
         with engine.connect() as conn, conn.begin():
@@ -504,14 +591,29 @@ def decide(
                 event=event,
                 case_id=run.case_id,
                 run_id=run_id,
-                payload={"decision": body.decision, "note": body.note},
+                payload=payload,
             )
+            correction_id = None
+            if body.correction is not None:
+                event_id = conn.execute(
+                    select(CaseEvent.id).where(CaseEvent.hash == new_hash)
+                ).scalar_one()
+                correction_id = insert_correction(
+                    conn,
+                    body.correction,
+                    module=run.module,
+                    case_id=run.case_id,
+                    run_id=run_id,
+                    decision_event_id=event_id,
+                    author=actor,
+                )
             return DecisionResponse(
                 run_id=run_id,
                 case_id=run.case_id,
                 event=event,
                 actor=actor,
                 hash=new_hash,
+                correction_id=correction_id,
             )
 
     return _safely(work)

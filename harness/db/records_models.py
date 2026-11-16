@@ -35,6 +35,7 @@ CASE_EVENT_TYPES = ("proposal_created", "human_review_created", "approved", "rej
 _EVENT_LIST = ", ".join(f"'{e}'" for e in CASE_EVENT_TYPES)
 AGENT_RUNNER_ACTOR = "agent-runner"
 RUN_STATUSES = ("proposed", "human_review")
+CORRECTION_KINDS = ("recommendation", "typology", "confidence", "evidence", "other")
 
 
 class EvalRun(Base):
@@ -151,3 +152,32 @@ class CaseEvent(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     prev_hash: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
     hash: Mapped[str] = mapped_column(Text, unique=True)
+
+
+class Correction(Base):
+    """A lesson a reviewer saved with a decision, for future cases. Append-only (a trigger
+    refuses UPDATE, DELETE and TRUNCATE). Only the human approval flow in apps/api writes it,
+    and nothing in the agent reads it yet (docs/plans/edits-and-corrections.md)."""
+
+    __tablename__ = "corrections"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ({})".format(", ".join(f"'{k}'" for k in CORRECTION_KINDS)),
+            name="kind_valid",
+        ),
+        CheckConstraint("char_length(rule) BETWEEN 10 AND 500", name="rule_length"),
+        CheckConstraint("author LIKE 'human:_%'", name="author_valid"),
+        Index("ix_corrections_module_created_at", "module", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
+    module: Mapped[str] = mapped_column(Text)
+    case_id: Mapped[str] = mapped_column(Text)
+    run_id: Mapped[str] = mapped_column(Text, ForeignKey("agent_runs.run_id"))
+    decision_event_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("case_events.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    rule: Mapped[str] = mapped_column(Text)
+    author: Mapped[str] = mapped_column(Text)

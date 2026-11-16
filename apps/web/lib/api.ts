@@ -6,8 +6,9 @@
 import { webDecisionsEnabled } from "./flags";
 
 export type QueueState = "waiting" | "decided" | "all";
-export type Decision = "approve" | "reject";
-export type DecisionEvent = "approved" | "rejected";
+export type Decision = "approve" | "reject" | "approve_with_edits";
+export type DecisionEvent = "approved" | "rejected" | "edited";
+export type CorrectionKind = "recommendation" | "typology" | "confidence" | "evidence" | "other";
 
 export interface DecisionInfo {
   decision: Decision;
@@ -135,9 +136,23 @@ export interface RunDetail {
   decision: DecisionInfo | null;
 }
 
+export interface FindingsEdits {
+  recommendation: string;
+  confidence: number;
+  typology: string;
+  narrative: string;
+}
+
+export interface CorrectionIn {
+  kind: CorrectionKind;
+  rule: string;
+}
+
 export interface DecisionRequest {
   decision: Decision;
   note: string | null;
+  edits?: FindingsEdits;
+  correction?: CorrectionIn;
 }
 
 export interface DecisionResponse {
@@ -146,13 +161,33 @@ export interface DecisionResponse {
   event: DecisionEvent;
   actor: string;
   hash: string;
+  correction_id: number | null;
 }
 
-/** status 0 means the API could not be reached. detail is the API's generic message. */
+export interface CorrectionOut {
+  id: number;
+  created_at: string;
+  module: string;
+  case_id: string;
+  run_id: string;
+  decision_event_id: number;
+  kind: string;
+  rule: string;
+  author: string;
+}
+
+export interface CorrectionsPage {
+  items: CorrectionOut[];
+  next_cursor: string | null;
+}
+
+/** status 0 means the API could not be reached. detail is the API's generic message; errors
+ * lists the reasons of a 422 (failed checks or invalid fields), empty otherwise. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly detail: string,
+    readonly errors: string[] = [],
   ) {
     super(`API error ${status}`);
   }
@@ -162,17 +197,32 @@ function baseUrl(): string {
   return (process.env.API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 }
 
-async function detailOf(response: Response): Promise<string> {
+/** One message per item of a list detail: plain strings from the API's own checks, or the
+ * msg of a request validation error. */
+function errorsOf(detail: unknown): string[] {
+  if (!Array.isArray(detail)) return [];
+  return detail.flatMap((item: unknown) => {
+    if (typeof item === "string") return [item];
+    if (item && typeof item === "object" && "msg" in item) {
+      const msg = (item as { msg: unknown }).msg;
+      if (typeof msg === "string") return [msg.replace(/^Value error, /, "")];
+    }
+    return [];
+  });
+}
+
+async function detailOf(response: Response): Promise<{ detail: string; errors: string[] }> {
   try {
     const body: unknown = await response.json();
     if (body && typeof body === "object" && "detail" in body) {
       const detail = (body as { detail: unknown }).detail;
-      return typeof detail === "string" ? detail : "invalid request";
+      if (typeof detail === "string") return { detail, errors: [] };
+      return { detail: "invalid request", errors: errorsOf(detail) };
     }
   } catch {
     // not JSON
   }
-  return response.statusText || "error";
+  return { detail: response.statusText || "error", errors: [] };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -183,7 +233,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, "the API is unreachable");
   }
   if (!response.ok) {
-    throw new ApiError(response.status, await detailOf(response));
+    const { detail, errors } = await detailOf(response);
+    throw new ApiError(response.status, detail, errors);
   }
   return (await response.json()) as T;
 }
@@ -196,6 +247,12 @@ export function getQueue(state: QueueState, cursor?: string, limit = 50): Promis
 
 export function getRun(runId: string): Promise<RunDetail> {
   return request<RunDetail>(`/runs/${encodeURIComponent(runId)}`);
+}
+
+export function getCorrections(cursor?: string, limit = 50): Promise<CorrectionsPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return request<CorrectionsPage>(`/corrections?${params.toString()}`);
 }
 
 export function postDecision(runId: string, body: DecisionRequest): Promise<DecisionResponse> {

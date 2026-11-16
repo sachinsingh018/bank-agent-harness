@@ -1,7 +1,11 @@
 # Case UI (Next.js)
 
 The approval queue: a list of cases the agent has worked on, and a case page where a person
-approves or rejects the agent's proposal. The web app talks to the API from the server side
+approves, approves with edits or rejects the agent's proposal. With "Approve with edits" the
+reviewer can change the recommendation, confidence, typology and narrative; the API runs the
+same deterministic checks as for the agent and refuses (listing the problems) if they fail. Any
+decision can also save a lesson ("correction") for future cases; lessons are listed on
+`/corrections` and are not read by the agent yet. The web app talks to the API from the server side
 only, so the reviewer token never reaches the browser.
 
 ## Run locally
@@ -35,7 +39,9 @@ deployment" and the decision action refuses before calling the API.
 
 For a production build use `npm run build` and then `npm run start` with the same variables.
 
-3. Open http://localhost:3000/queue.
+3. Open http://localhost:3000/queue (lessons at http://localhost:3000/corrections).
+
+The API needs migration 0004 (the corrections table) applied to its records database.
 
 ## Environment
 

@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 
 import { ApiError, getRun, type RunDetail, type TransferRecord } from "../../../lib/api";
 import {
+  CORRECTION_KINDS,
+  RECOMMENDATIONS,
+  TYPOLOGIES,
+  decisionLabel,
   findingText,
   formatStatus,
   formatTime,
@@ -15,9 +19,28 @@ import { submitDecision } from "./actions";
 const OUTCOME_TEXT: Record<string, { kind: "success" | "error"; text: string }> = {
   approved: { kind: "success", text: "Approved. The decision is in the audit log." },
   rejected: { kind: "success", text: "Rejected. The decision is in the audit log." },
-  "note-required": { kind: "error", text: "A rejection needs a note explaining why." },
+  edited: {
+    kind: "success",
+    text: "Approved with edits. The edited answer passed every check and is in the audit log.",
+  },
+  "note-required": {
+    kind: "error",
+    text: "A rejection or an approval with edits needs a note explaining why.",
+  },
+  "edits-invalid": {
+    kind: "error",
+    text: "Fill in every edit field: recommendation, confidence, typology and narrative.",
+  },
+  "rule-invalid": {
+    kind: "error",
+    text: "A lesson needs a kind and a rule of 10 to 500 characters (or leave both empty).",
+  },
+  "checks-failed": {
+    kind: "error",
+    text: "The decision was not saved. Fix these problems and try again:",
+  },
   "note-too-long": { kind: "error", text: "The note is too long (2000 characters at most)." },
-  invalid: { kind: "error", text: "Choose approve or reject." },
+  invalid: { kind: "error", text: "Choose approve, approve with edits or reject." },
   disabled: {
     kind: "error",
     text:
@@ -33,6 +56,32 @@ const OUTCOME_TEXT: Record<string, { kind: "success" | "error"; text: string }> 
 
 function one(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function all(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function EditedValues({ run }: { run: RunDetail }) {
+  const event = run.events.find((e) => e.event === "edited");
+  if (!event) return null;
+  const edited = event.payload.edited;
+  const original = event.payload.original;
+  if (!isRecord(edited) || !isRecord(original)) return null;
+  return (
+    <ul className="plain">
+      {Object.keys(edited).map((key) => (
+        <li key={key}>
+          {key}: {String(original[key] ?? "")} changed to {String(edited[key] ?? "")}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function account(a: { bank: number; acct: string }): string {
@@ -127,10 +176,11 @@ function DecisionPanel({ run }: { run: RunDetail }) {
     return (
       <div className="panel">
         <p>
-          <strong>{d.decision === "approve" ? "Approved" : "Rejected"}</strong> by{" "}
-          {d.actor.replace(/^human:/, "")} at {formatTime(d.at)}.
+          <strong>{decisionLabel(d.decision)}</strong> by {d.actor.replace(/^human:/, "")} at{" "}
+          {formatTime(d.at)}.
         </p>
         {d.note && <p>Note: {d.note}</p>}
+        <EditedValues run={run} />
       </div>
     );
   }
@@ -138,6 +188,8 @@ function DecisionPanel({ run }: { run: RunDetail }) {
     return <p className="notice">Decisions are disabled in this web deployment.</p>;
   }
   const action = submitDecision.bind(null, run.run_id);
+  const canEdit = run.module === "aml" && run.findings !== null;
+  const confidence = run.findings?.confidence;
   return (
     <form className="decision panel" action={action}>
       <fieldset>
@@ -145,12 +197,89 @@ function DecisionPanel({ run }: { run: RunDetail }) {
         <label>
           <input type="radio" name="decision" value="approve" required /> Approve
         </label>
+        {canEdit && (
+          <label>
+            <input type="radio" name="decision" value="approve_with_edits" /> Approve with edits
+          </label>
+        )}
         <label>
           <input type="radio" name="decision" value="reject" /> Reject
         </label>
       </fieldset>
-      <label htmlFor="note">Note (required when you reject, 2000 characters at most)</label>
+      <label htmlFor="note">
+        Note (required when you reject or approve with edits, 2000 characters at most)
+      </label>
       <textarea id="note" name="note" maxLength={2000} />
+
+      {canEdit && (
+        <fieldset className="stacked">
+          <legend className="muted">Edits (used only with Approve with edits)</legend>
+          <p className="muted">
+            Claims and figures stay as the agent wrote them. The edited answer must pass the same
+            checks as the agent&apos;s, or nothing is saved.
+          </p>
+          <label htmlFor="edit_recommendation">Recommendation</label>
+          <select
+            id="edit_recommendation"
+            name="edit_recommendation"
+            defaultValue={findingText(run.findings, "recommendation")}
+          >
+            {RECOMMENDATIONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <label htmlFor="edit_confidence">Confidence (0 to 1)</label>
+          <input
+            id="edit_confidence"
+            name="edit_confidence"
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            defaultValue={typeof confidence === "number" ? confidence : undefined}
+          />
+          <label htmlFor="edit_typology">Typology</label>
+          <select
+            id="edit_typology"
+            name="edit_typology"
+            defaultValue={findingText(run.findings, "typology")}
+          >
+            {TYPOLOGIES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <label htmlFor="edit_narrative">Narrative (1200 characters at most)</label>
+          <textarea
+            id="edit_narrative"
+            name="edit_narrative"
+            maxLength={1200}
+            defaultValue={findingText(run.findings, "narrative")}
+          />
+        </fieldset>
+      )}
+
+      <fieldset className="stacked">
+        <legend className="muted">Save a lesson for future cases (optional)</legend>
+        <p className="muted">
+          A short rule in plain words, for example &quot;Regular payroll from one employer to
+          many staff accounts is not fan-out.&quot; No dates, month names or years.
+        </p>
+        <label htmlFor="correction_kind">Kind</label>
+        <select id="correction_kind" name="correction_kind" defaultValue="">
+          <option value="">no lesson</option>
+          {CORRECTION_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="correction_rule">Rule (10 to 500 characters)</label>
+        <textarea id="correction_rule" name="correction_rule" minLength={10} maxLength={500} />
+      </fieldset>
       <button type="submit">Submit decision</button>
     </form>
   );
@@ -164,7 +293,9 @@ export default async function CasePage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { runId } = await params;
-  const outcome = one((await searchParams).outcome);
+  const query = await searchParams;
+  const outcome = one(query.outcome);
+  const errors = all(query.error);
   if (!isValidRunId(runId)) notFound();
 
   let run: RunDetail;
@@ -199,7 +330,18 @@ export default async function CasePage({
       <h1>
         Alert <span className="mono">{run.case_id}</span>
       </h1>
-      {notice && <p className={`notice ${notice.kind}`}>{notice.text}</p>}
+      {notice && (
+        <div className={`notice ${notice.kind}`}>
+          <p>{notice.text}</p>
+          {errors.length > 0 && (
+            <ul>
+              {errors.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <dl className="facts panel">
         <div>
