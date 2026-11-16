@@ -27,7 +27,7 @@ def test_descriptions_file_is_complete_versioned_and_plain() -> None:
     raw = DESCRIPTIONS_PATH.read_text(encoding="utf-8")
     assert not any(dash in raw for dash in DASHES)
     descriptions = load_descriptions(NAMES)
-    assert descriptions.version == "v1"
+    assert descriptions.version == "v2"
     assert list(descriptions.tools) == NAMES
 
 
@@ -105,7 +105,7 @@ def test_tool_schemas_match_the_snapshot() -> None:
 
 def test_snapshot_holds_every_tool_and_the_version() -> None:
     snapshot = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
-    assert snapshot["descriptions_version"] == "v1"
+    assert snapshot["descriptions_version"] == "v2"
     assert sorted(t["name"] for t in snapshot["tools"]) == sorted(NAMES)
     for tool in snapshot["tools"]:
         assert tool["description"] and tool["input_schema"] and tool["output_schema"]

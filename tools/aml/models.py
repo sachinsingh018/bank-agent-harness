@@ -13,6 +13,7 @@ from tools.aml.caps import (
     MAX_MATCH_TXN_IDS,
     MAX_PATTERN_MATCHES,
     MAX_ROWS,
+    MAX_SUM_TXN_IDS,
 )
 
 # ---------------------------------------------------------------- outputs
@@ -23,8 +24,11 @@ class AccountRef(BaseModel):
     acct: str
 
 
+DecimalString = Annotated[str, Field(pattern=r"^-?[0-9]+(\.[0-9]+)?$")]
+
+
 class Money(BaseModel):
-    value: Annotated[str, Field(pattern=r"^-?[0-9]+(\.[0-9]+)?$")]
+    value: DecimalString
     currency: str
 
     @classmethod
@@ -169,6 +173,23 @@ class DetectorInfo(BaseModel):
     notes: str
 
 
+class CurrencyTotal(BaseModel):
+    """The exact total of the cited transfers on one side in one currency."""
+
+    currency: str
+    total: DecimalString
+    count: int
+    txn_ids: list[int]
+
+
+class SumTransfersResult(BaseModel):
+    """Exact per-currency totals. Currencies are never added together."""
+
+    side: str
+    totals: list[CurrencyTotal]
+    missing_txn_ids: list[int]
+
+
 ErrorCode = Literal["not_found", "invalid_argument", "too_large", "internal"]
 
 
@@ -189,6 +210,7 @@ Direction = Literal["in", "out", "both"]
 Hops = Annotated[int, Field(ge=1, le=MAX_GRAPH_HOPS, strict=True)]
 PatternName = Literal["fan-out", "fan-in", "cycle", "scatter-gather", "gather-scatter"]
 DetectorName = Annotated[str, Field(min_length=1, max_length=40)]
+Side = Literal["paid", "received"]
 
 
 class _Input(BaseModel):
@@ -260,3 +282,14 @@ class PatternCheckInput(_WindowInput):
 
 class DescribeDetectorInput(_Input):
     detector: DetectorName
+
+
+class SumTransfersInput(_Input):
+    txn_ids: Annotated[list[TxnId], Field(min_length=1, max_length=MAX_SUM_TXN_IDS)]
+    side: Side
+
+    @field_validator("txn_ids")
+    @classmethod
+    def _unique(cls, value: list[int]) -> list[int]:
+        """Duplicates are removed, so each transfer is counted once."""
+        return sorted(set(value))

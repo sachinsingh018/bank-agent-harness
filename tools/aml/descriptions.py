@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-DESCRIPTIONS_PATH = Path(__file__).with_name("tool_descriptions_v1.json")
+DESCRIPTIONS_PATH = Path(__file__).with_name("tool_descriptions_v2.json")
 
 
 class DescriptionsError(Exception):

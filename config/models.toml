@@ -19,7 +19,9 @@ cache_write = "5.00"
 [profiles.openrouter-free-dev]
 provider = "openrouter"
 model = "nvidia/nemotron-3-ultra-550b-a55b:free"  # chosen 2026-11-16, free tier: 50 requests a day
-max_output_tokens = 8000
+# Reasoning models spend output tokens thinking before they answer. At 8000 one case hit
+# max_tokens with empty output (run 20261116T014628Z-c9d334), so this uses the harness cap.
+max_output_tokens = 16000
 
 [profiles.openrouter-free-dev.prices]
 input = "0"

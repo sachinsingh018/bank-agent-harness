@@ -47,10 +47,13 @@ def test_prompt_files_have_no_em_or_en_dashes() -> None:
 
 def test_investigator_prompt_loads_and_names_the_tools() -> None:
     loaded = load_prompt(AML_SPEC.prompt)
-    assert loaded.version == "v1"
-    assert loaded.path == "modules/aml/prompts/investigator_v1.md"
-    for word in ("submit_findings", "get_alert", "describe_detector", "run_pattern_check", "NONE"):
+    assert loaded.version == "v2"
+    assert loaded.path == "modules/aml/prompts/investigator_v2.md"
+    words = ("submit_findings", "get_alert", "describe_detector", "run_pattern_check", "NONE")
+    for word in (*words, "sum_transfers"):
         assert word in loaded.text
+    for limit in ("at most 50", "at most 20 amounts", "at most 10 claims", "1,200 characters"):
+        assert limit in loaded.text
 
 
 def test_case_message_contains_the_alert_id() -> None:

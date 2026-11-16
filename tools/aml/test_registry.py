@@ -31,8 +31,8 @@ def test_every_public_query_function_is_registered() -> None:
 
 
 def test_registry_entries_point_at_the_named_function() -> None:
-    assert len(QUERY_REGISTRY) == 9
-    assert len({entry.name for entry in QUERY_REGISTRY}) == 9
+    assert len(QUERY_REGISTRY) == 10
+    assert len({entry.name for entry in QUERY_REGISTRY}) == 10
     for entry in QUERY_REGISTRY:
         module = sys.modules[entry.func.__module__]
         assert module in QUERY_MODULES

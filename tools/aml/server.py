@@ -98,7 +98,7 @@ def _handler(entry: QueryEntry, engine: Any) -> Callable[..., Awaitable[BaseMode
 
 
 def build_server(engine: Any = None) -> MCPServer:
-    """The server with the nine tools. Without an engine it can list tools but not query."""
+    """The server with the ten tools. Without an engine it can list tools but not query."""
     descriptions = load_descriptions(entry.name for entry in QUERY_REGISTRY)
     server = MCPServer(SERVER_NAME, version=descriptions.version)
     for entry in QUERY_REGISTRY:

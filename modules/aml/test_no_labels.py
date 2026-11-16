@@ -207,6 +207,7 @@ def test_agent_code_and_prompts_never_name_the_labels() -> None:
     files = [*_agent_code(), *sorted(p for p in PROMPTS_DIR.rglob("*") if p.is_file())]
     assert any(p.name == "models.py" for p in files)
     assert any(p.name == "investigator_v1.md" for p in files)
+    assert any(p.name == "investigator_v2.md" for p in files)
     for path in files:
         text = path.read_text(encoding="utf-8")
         for word in AGENT_FORBIDDEN_WORDS:

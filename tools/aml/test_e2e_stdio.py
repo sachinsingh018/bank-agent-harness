@@ -178,7 +178,7 @@ async def _drive(url: str, samples: Samples, small: Samples) -> Session:
     after = _server_pids()
     return Session(
         tool_names=[t.name for t in listed],
-        snapshot=snapshot_from_tools(list(listed), "v1"),
+        snapshot=snapshot_from_tools(list(listed), "v2"),
         calls=calls,
         errors=errors,
         stderr=stderr,
@@ -222,9 +222,9 @@ def _error(call: Call) -> ToolError:
     return ToolError.model_validate(json.loads(call.text[start:]))
 
 
-def test_lists_exactly_the_nine_tools(session: Session) -> None:
+def test_lists_exactly_the_ten_tools(session: Session) -> None:
     assert sorted(session.tool_names) == sorted(e.name for e in QUERY_REGISTRY)
-    assert len(session.tool_names) == 9
+    assert len(session.tool_names) == 10
 
 
 def test_listing_over_stdio_matches_the_snapshot(session: Session) -> None:

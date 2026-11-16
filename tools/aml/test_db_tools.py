@@ -3,6 +3,8 @@
 The fixture commits alerts under its own ruleset version and removes them again."""
 
 import re
+from collections import defaultdict
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -24,6 +26,7 @@ from tools.aml.models import (
     AlertIdInput,
     AlertTransactionsInput,
     CounterpartiesInput,
+    SumTransfersInput,
     TransactionInput,
 )
 from tools.aml.paging import ToolFailure
@@ -34,6 +37,7 @@ from tools.aml.queries import (
     get_alert_transactions,
     get_counterparties,
     get_transaction,
+    sum_transfers,
 )
 from tools.aml.query_registry import QUERY_REGISTRY
 
@@ -285,3 +289,50 @@ def test_database_itself_is_read_only(local_engine: Engine, tool_data: ToolData)
             ).scalar_one()
             == 0
         )
+
+
+def test_sum_transfers_is_exact_per_currency(local_engine: Engine, tool_engine: Engine) -> None:
+    with local_engine.connect() as conn:
+        rows = conn.execute(
+            select(
+                Transaction.txn_id,
+                Transaction.amt_paid,
+                Transaction.cur_paid,
+                Transaction.amt_recv,
+                Transaction.cur_recv,
+            )
+            .order_by(Transaction.txn_id)
+            .limit(40)
+        ).all()
+    assert rows
+    ids = [r.txn_id for r in rows]
+    missing = max(ids) + 1_000_000
+    for side in ("paid", "received"):
+        expected: dict[str, Decimal] = defaultdict(Decimal)
+        expected_ids: dict[str, list[int]] = defaultdict(list)
+        for r in rows:
+            amount, cur = (r.amt_paid, r.cur_paid) if side == "paid" else (r.amt_recv, r.cur_recv)
+            expected[cur] += amount
+            expected_ids[cur].append(r.txn_id)
+        inp = SumTransfersInput.model_validate(
+            {"txn_ids": [*reversed(ids), ids[0], missing], "side": side}
+        )
+        with open_readonly(tool_engine) as conn:
+            result = sum_transfers(conn, inp)
+        assert result.side == side
+        assert result.missing_txn_ids == [missing]
+        assert [t.currency for t in result.totals] == sorted(expected)
+        for t in result.totals:
+            assert Decimal(t.total) == expected[t.currency]
+            assert t.txn_ids == expected_ids[t.currency]
+            assert t.count == len(t.txn_ids)
+        assert len(result.model_dump_json()) <= MAX_RESPONSE_CHARS
+
+
+def test_sum_transfers_input_limits() -> None:
+    assert SumTransfersInput(txn_ids=[3, 1, 3], side="paid").txn_ids == [1, 3]
+    for bad in ({"txn_ids": [], "side": "paid"}, {"txn_ids": list(range(1, 52)), "side": "paid"}):
+        with pytest.raises(ValueError):
+            SumTransfersInput.model_validate(bad)
+    with pytest.raises(ValueError):
+        SumTransfersInput.model_validate({"txn_ids": [1], "side": "both"})

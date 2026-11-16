@@ -12,4 +12,5 @@ GRAPH_EXPANSION_FANOUT = 5  # hop 2 grows only from this many of the busiest hop
 MAX_PATTERN_TXNS = 2000
 MAX_PATTERN_MATCHES = 10
 MAX_MATCH_TXN_IDS = 50
+MAX_SUM_TXN_IDS = 50  # transfer ids per sum_transfers call
 TOOL_TIMEOUT_SECONDS = 10

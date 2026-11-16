@@ -1,5 +1,5 @@
 {
-  "descriptions_version": "v1",
+  "descriptions_version": "v2",
   "tools": [
     {
       "description": "Returns the plain-English meaning, the thresholds and the roles of one detector (fan-out, fan-in, cycle, scatter-gather or gather-scatter). It needs no database and is free to call. Use it to understand why an alert fired and what its measured parameters mean. Nothing in the result is truncated.",
@@ -1508,6 +1508,103 @@
           "note"
         ],
         "title": "PatternCheckResult",
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns exact per-currency totals of the transfers you name, on one side: side paid sums the amount each sender paid, side received sums the amount each receiver got. Give 1 to 50 transfer ids; duplicates are counted once. Per currency it returns the total as an exact decimal string, the number of transfers and their sorted ids, and it lists any ids that were not found in missing_txn_ids. Compute every sum figure in your findings with this tool, never by hand: call it with exactly the transfer ids and side you will cite and copy its total and currency. Nothing in the result is truncated. Amounts are exact decimal strings with a currency. Amounts are per currency and are never summed across currencies, because there are no exchange rates.",
+      "input_schema": {
+        "properties": {
+          "side": {
+            "enum": [
+              "paid",
+              "received"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "txn_ids": {
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Txn Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "txn_ids",
+          "side"
+        ],
+        "title": "sum_transfersArguments",
+        "type": "object"
+      },
+      "name": "sum_transfers",
+      "output_schema": {
+        "$defs": {
+          "CurrencyTotal": {
+            "description": "The exact total of the cited transfers on one side in one currency.",
+            "properties": {
+              "count": {
+                "title": "Count",
+                "type": "integer"
+              },
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "total": {
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "title": "Total",
+                "type": "string"
+              },
+              "txn_ids": {
+                "items": {
+                  "type": "integer"
+                },
+                "title": "Txn Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "currency",
+              "total",
+              "count",
+              "txn_ids"
+            ],
+            "title": "CurrencyTotal",
+            "type": "object"
+          }
+        },
+        "description": "Exact per-currency totals. Currencies are never added together.",
+        "properties": {
+          "missing_txn_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Missing Txn Ids",
+            "type": "array"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/$defs/CurrencyTotal"
+            },
+            "title": "Totals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "side",
+          "totals",
+          "missing_txn_ids"
+        ],
+        "title": "SumTransfersResult",
         "type": "object"
       }
     }

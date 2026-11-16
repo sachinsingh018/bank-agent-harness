@@ -28,6 +28,8 @@ from tools.aml.models import (
     PatternCheckInput,
     PatternCheckResult,
     PatternName,
+    SumTransfersInput,
+    SumTransfersResult,
     TransactionInput,
     TransferPage,
     TransferRecord,
@@ -115,6 +117,16 @@ def _detector_args(s: Samples) -> list[BaseModel]:
     return [DescribeDetectorInput(detector=d) for d in get_args(PatternName)]
 
 
+def _sum_args(s: Samples) -> list[BaseModel]:
+    # Neighbouring ids, a duplicate and an id that does not exist, on both sides.
+    ids = [s.txn_id, s.txn_id, s.txn_id + 1, s.txn_id + 2, 999_999_999]
+    return [
+        SumTransfersInput(txn_ids=[s.txn_id], side="paid"),
+        SumTransfersInput(txn_ids=ids, side="paid"),
+        SumTransfersInput(txn_ids=ids, side="received"),
+    ]
+
+
 QUERY_REGISTRY: tuple[QueryEntry, ...] = (
     QueryEntry("get_alert", queries.get_alert, _alert_args, AlertIdInput, AlertRecord),
     QueryEntry(
@@ -141,6 +153,13 @@ QUERY_REGISTRY: tuple[QueryEntry, ...] = (
         _counterparty_args,
         CounterpartiesInput,
         CounterpartiesResult,
+    ),
+    QueryEntry(
+        "sum_transfers",
+        queries.sum_transfers,
+        _sum_args,
+        SumTransfersInput,
+        SumTransfersResult,
     ),
     QueryEntry(
         "get_transaction_graph",

@@ -46,10 +46,13 @@ from tools.aml.models import (
     CounterpartiesInput,
     CounterpartiesResult,
     CounterpartyRecord,
+    CurrencyTotal,
     GraphInput,
     GraphNode,
     GraphResult,
     Money,
+    SumTransfersInput,
+    SumTransfersResult,
     TransactionInput,
     TransferPage,
     TransferRecord,
@@ -428,6 +431,46 @@ def get_counterparties(conn: Connection, inp: CounterpartiesInput) -> Counterpar
         total_count=len(keys),
         returned=len(kept),
         truncated=len(kept) < len(keys),
+    )
+
+
+def sum_transfers(conn: Connection, inp: SumTransfersInput) -> SumTransfersResult:
+    """Exact totals of the given transfers on one side, per currency. The database does the
+    sums on the exact numeric column, so nothing is rounded. Ids not found are listed."""
+    amount = Transaction.amt_paid if inp.side == "paid" else Transaction.amt_recv
+    currency = Transaction.cur_paid if inp.side == "paid" else Transaction.cur_recv
+    chosen = Transaction.txn_id.in_(inp.txn_ids)
+    id_rows = conn.execute(
+        select(Transaction.txn_id, currency.label("currency"))
+        .where(chosen)
+        .order_by(Transaction.txn_id)
+    ).all()
+    sum_rows = conn.execute(
+        select(currency.label("currency"), func.sum(amount).label("total"))
+        .where(chosen)
+        .group_by(currency)
+        .order_by(currency)
+    ).all()
+    ids_by_currency: dict[str, list[int]] = defaultdict(list)
+    for id_row in id_rows:
+        ids_by_currency[id_row.currency].append(id_row.txn_id)
+    totals: list[CurrencyTotal] = []
+    for sum_row in sum_rows:
+        total: Decimal = sum_row.total
+        ids = ids_by_currency[sum_row.currency]
+        totals.append(
+            CurrencyTotal(
+                currency=sum_row.currency,
+                total=Money.of(total, sum_row.currency).value,
+                count=len(ids),
+                txn_ids=ids,
+            )
+        )
+    found = {r.txn_id for r in id_rows}
+    return SumTransfersResult(
+        side=inp.side,
+        totals=totals,
+        missing_txn_ids=[t for t in inp.txn_ids if t not in found],
     )
 
 

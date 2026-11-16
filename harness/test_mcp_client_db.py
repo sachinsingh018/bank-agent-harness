@@ -54,7 +54,7 @@ def test_lists_tools_and_calls_them(harness_test_url: str, harness_samples: Samp
         return names, out
 
     names, out = asyncio.run(run())
-    assert len(names) == 9
+    assert len(names) == 10
     assert sorted(names) == sorted(e.name for e in QUERY_REGISTRY)
 
     describe = out["describe"]
