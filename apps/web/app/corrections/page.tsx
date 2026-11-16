@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ApiError, getCorrections, type CorrectionsPage } from "../../lib/api";
+import { API_WAKING_MESSAGE, ApiError, getCorrections, type CorrectionsPage } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 
 function one(value: string | string[] | undefined): string | undefined {
@@ -20,7 +20,7 @@ export default async function CorrectionsPageView({
     page = await getCorrections(cursor);
   } catch (err) {
     if (err instanceof ApiError && err.status === 0) {
-      error = "The API is unreachable. Check that it is running and that API_BASE_URL is set.";
+      error = API_WAKING_MESSAGE;
     } else if (err instanceof ApiError && err.status === 422) {
       error = "That page link is no longer valid. Start again from the first page.";
     } else if (err instanceof ApiError) {

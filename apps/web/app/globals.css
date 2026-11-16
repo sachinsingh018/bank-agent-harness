@@ -50,6 +50,14 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
+.demo-banner {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
 .brand {
   font-weight: 600;
   color: var(--fg);

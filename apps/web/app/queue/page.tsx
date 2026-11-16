@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ApiError, getQueue, type QueuePage, type QueueState } from "../../lib/api";
+import { API_WAKING_MESSAGE, ApiError, getQueue, type QueuePage, type QueueState } from "../../lib/api";
 import { decisionLabel, formatConfidence, formatStatus, formatTime } from "../../lib/format";
 
 const TABS: { state: QueueState; label: string }[] = [
@@ -32,7 +32,7 @@ export default async function QueuePageView({
     page = await getQueue(state, cursor);
   } catch (err) {
     if (err instanceof ApiError && err.status === 0) {
-      error = "The API is unreachable. Check that it is running and that API_BASE_URL is set.";
+      error = API_WAKING_MESSAGE;
     } else if (err instanceof ApiError && err.status === 422) {
       error = "That page link is no longer valid. Start again from the first page.";
     } else if (err instanceof ApiError) {

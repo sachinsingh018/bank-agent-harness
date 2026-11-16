@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { webDecisionsEnabled } from "../lib/flags";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,6 +23,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/corrections">Lessons</Link>
           </nav>
         </header>
+        {!webDecisionsEnabled() && (
+          <p className="demo-banner" role="status">
+            Demo in replay mode: browse recorded cases. Decisions are disabled.
+          </p>
+        )}
         <main>{children}</main>
       </body>
     </html>

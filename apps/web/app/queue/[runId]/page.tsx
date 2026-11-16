@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ApiError, getRun, type RunDetail, type TransferRecord } from "../../../lib/api";
+import { API_WAKING_MESSAGE, ApiError, getRun, type RunDetail, type TransferRecord } from "../../../lib/api";
 import {
   CORRECTION_KINDS,
   RECOMMENDATIONS,
@@ -305,7 +305,7 @@ export default async function CasePage({
     if (err instanceof ApiError && err.status === 404) notFound();
     const text =
       err instanceof ApiError && err.status === 0
-        ? "The API is unreachable. Check that it is running and that API_BASE_URL is set."
+        ? API_WAKING_MESSAGE
         : "The case could not be loaded.";
     return (
       <>

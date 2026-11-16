@@ -37,6 +37,10 @@ API_BASE_URL=http://localhost:8000 REVIEWER_TOKEN=local-dev-token WEB_DECISIONS_
 Without `WEB_DECISIONS_ENABLED=1` the case page shows "Decisions are disabled in this web
 deployment" and the decision action refuses before calling the API.
 
+When decisions are off, every page shows a "Demo in replay mode" banner. API requests time out
+after 20 seconds; a timeout or connection failure shows "The API is waking up" (the free API host
+sleeps when idle). Hosted deployment steps are in docs/deploy.md.
+
 For a production build use `npm run build` and then `npm run start` with the same variables.
 
 3. Open http://localhost:3000/queue (lessons at http://localhost:3000/corrections).

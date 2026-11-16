@@ -13,3 +13,12 @@ services:
         value: 3.12.11
       - key: DATABASE_URL
         sync: false
+      # The records database (agent_runs, case_events, corrections). Same Neon prod URL as
+      # DATABASE_URL, with the postgresql+psycopg:// prefix. Set in the dashboard, never here.
+      - key: HARNESS_WRITE_DATABASE_URL
+        sync: false
+      # "1" lets the API use databases that are not local (Neon). Set in the dashboard.
+      - key: API_ALLOW_REMOTE_DATABASE
+        sync: false
+      # Do NOT add REVIEWER_TOKEN or REVIEWER_NAME to this public service. Without them the
+      # decision endpoint answers 403, so nobody can write decisions on the hosted demo.

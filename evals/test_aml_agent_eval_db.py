@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, func, select
 
-from evals import aml_agent_score, run_aml_agent
+from evals import aml_agent_score, record_run, run_aml_agent
 from evals.aml_agent_score import Outcome, baseline_metrics, load_truths
 from harness import records
 from harness.db.models import Alert
@@ -283,3 +283,79 @@ def test_scorer_record_needs_a_recorded_run(
     run_dir = Path(stdout.strip().splitlines()[-1].removeprefix("run_dir="))
     assert aml_agent_score.main(["--run", str(run_dir), "--record"]) == 1
     assert "not recorded" in capsys.readouterr().out
+
+
+def test_record_run_copies_a_run_dir_into_the_records_tables(
+    local_engine: Engine,
+    eval_alert_ids: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A run made without --record, scored, then recorded from its files by record_run. A
+    second call is refused. capfd: the tools server child needs a real stderr descriptor."""
+    url = local_url()
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            {
+                "alert_ids": eval_alert_ids[:2],
+                "created_by": "test",
+                "dataset": "test",
+                "ruleset_version": EVAL_VERSION,
+                "split_seed": 42,
+                "version": "v0",
+            }
+        )
+    )
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("HARNESS_WRITE_DATABASE_URL", url)
+    code = run_aml_agent.main(
+        ["--dataset", str(dataset), "--profile", "scripted", "--out-dir", str(tmp_path / "r")]
+    )
+    stdout = capfd.readouterr().out
+    assert code == 0, stdout
+    run_dir = Path(stdout.strip().splitlines()[-1].removeprefix("run_dir="))
+    assert aml_agent_score.main(["--run", str(run_dir)]) == 0
+    capfd.readouterr()
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    eval_run_id = manifest["run_id"]
+
+    with records_cleaned(local_engine):
+        code = record_run.main(["--run", str(run_dir), "--score"])
+        stdout = capfd.readouterr().out
+        assert code == 0, stdout
+        assert "write target: local database" in stdout
+        assert f"recorded: eval run {eval_run_id}, cases 2, with score" in stdout
+
+        with local_engine.connect() as conn:
+            run = conn.execute(select(EvalRun).where(EvalRun.eval_run_id == eval_run_id)).one()
+            assert run.started_at.isoformat() == manifest["started_at"]
+            assert run.finished_at.isoformat() == manifest["finished_at"]
+            assert run.counts["total"] == 2
+            assert run.prompt_sha256 == manifest["prompt"]["sha256"]
+            runs = conn.execute(select(AgentRun).where(AgentRun.eval_run_id == eval_run_id)).all()
+            assert {r.case_id for r in runs} == set(eval_alert_ids[:2])
+            assert all(r.profile == "scripted" and r.prompt_version == "v3" for r in runs)
+            run_ids = [r.run_id for r in runs]
+            calls = conn.execute(
+                select(func.count()).where(ModelCall.run_id.in_(run_ids))
+            ).scalar_one()
+            assert calls >= 2
+            events = conn.execute(select(CaseEvent).where(CaseEvent.run_id.in_(run_ids))).all()
+            assert len(events) == 2
+            stored = conn.execute(
+                select(EvalResult).where(EvalResult.eval_run_id == eval_run_id)
+            ).one()
+            assert stored.score == json.loads((run_dir / "score.json").read_text())
+
+        assert records.main(["verify"]) == 0
+        assert "chain ok," in capfd.readouterr().out
+
+        assert record_run.main(["--run", str(run_dir), "--score"]) == 1
+        assert "already recorded" in capfd.readouterr().out
+        with local_engine.connect() as conn:
+            again = conn.execute(
+                select(func.count()).where(AgentRun.eval_run_id == eval_run_id)
+            ).scalar_one()
+        assert again == 2

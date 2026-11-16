@@ -193,6 +193,14 @@ export class ApiError extends Error {
   }
 }
 
+/** Requests give up after this long, so a sleeping free-tier API shows a friendly message
+ * instead of a page that hangs. */
+const API_TIMEOUT_MS = 20_000;
+
+/** Shown when the API cannot be reached or does not answer in time (status 0). */
+export const API_WAKING_MESSAGE =
+  "The API is waking up (free hosting sleeps when idle). Try again in about a minute.";
+
 function baseUrl(): string {
   return (process.env.API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 }
@@ -228,8 +236,13 @@ async function detailOf(response: Response): Promise<{ detail: string; errors: s
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${baseUrl()}${path}`, { ...init, cache: "no-store" });
+    response = await fetch(`${baseUrl()}${path}`, {
+      ...init,
+      cache: "no-store",
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
   } catch {
+    // Connection failure or timeout.
     throw new ApiError(0, "the API is unreachable");
   }
   if (!response.ok) {
