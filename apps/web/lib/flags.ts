@@ -12,3 +12,8 @@ const RUN_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 export function isValidRunId(runId: string): boolean {
   return RUN_ID_PATTERN.test(runId);
 }
+
+/** Eval run ids look like 20261118T022209Z-a46fb4; the same safe character set applies. */
+export function isValidEvalRunId(evalRunId: string): boolean {
+  return RUN_ID_PATTERN.test(evalRunId);
+}

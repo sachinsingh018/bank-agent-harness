@@ -127,7 +127,7 @@ export async function submitDecision(runId: string, formData: FormData): Promise
     params.append("error", e.slice(0, MAX_ERROR_LENGTH));
   }
   revalidatePath("/queue");
-  revalidatePath("/corrections");
+  revalidatePath("/lessons");
   revalidatePath(`/queue/${encodeURIComponent(runId)}`);
   redirect(`/queue/${encodeURIComponent(runId)}?${params.toString()}`);
 }

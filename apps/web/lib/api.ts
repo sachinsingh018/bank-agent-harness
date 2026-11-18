@@ -209,6 +209,141 @@ export interface CorrectionsPage {
   next_cursor: string | null;
 }
 
+// Eval runs (GET /evals, GET /evals/{id}). Counts and rates only: the API whitelists every
+// field, and no per alert truth is ever returned.
+
+export interface Confusion {
+  n: number | null;
+  flagged: number | null;
+  positives: number | null;
+  tp: number | null;
+  fp: number | null;
+  fn: number | null;
+  tn: number | null;
+  precision: number | null;
+  recall: number | null;
+}
+
+export interface TruthPair {
+  strict: Confusion | null;
+  loose: Confusion | null;
+}
+
+export interface SplitScore {
+  alerts: number | null;
+  baseline: {
+    raised: number | null;
+    true_strict: number | null;
+    false_strict: number | null;
+    precision_strict: number | null;
+    precision_loose: number | null;
+    recall_strict: number | null;
+  } | null;
+  agent_with_human_review: TruthPair | null;
+  agent_proposed_only: TruthPair | null;
+  human_review: { count: number | null; rate: number | null; reasons: Record<string, number> } | null;
+  fp_reduction: {
+    at_target_recall: {
+      target_recall: number | null;
+      threshold: number | null;
+      flagged: number | null;
+      tp: number | null;
+      fp: number | null;
+      recall: number | null;
+      baseline_fp: number | null;
+      fp_reduction: number | null;
+    } | null;
+    at_agent_decisions: {
+      flagged: number | null;
+      tp: number | null;
+      fp: number | null;
+      recall: number | null;
+      baseline_fp: number | null;
+      fp_reduction: number | null;
+    } | null;
+  } | null;
+  typology: {
+    strict_positives_with_typology: number | null;
+    correct: number | null;
+    accuracy: number | null;
+    none_rate_on_negatives: number | null;
+  } | null;
+  grounding: { claims: number | null; grounded: number | null; rate: number | null } | null;
+  calibration: { n: number | null; ece: number | null; indicative: boolean | null } | null;
+  effort: {
+    total_cost_usd: string | null;
+    cost_per_alert_usd: string | null;
+    latency_ms_mean: number | null;
+    tool_steps_mean: number | null;
+  } | null;
+  review: {
+    reviewed: number | null;
+    approved: number | null;
+    rejected: number | null;
+    failed: number | null;
+    reject_rate: number | null;
+    precision_change: number | null;
+    recall_change: number | null;
+  } | null;
+}
+
+export type SplitName = "early" | "late" | "all";
+
+export interface ScoreOut {
+  headline: string | null;
+  late_cutoff: string | null;
+  target_recall: number | null;
+  splits: Record<SplitName, SplitScore | null> | null;
+  lessons: { enabled: boolean | null; cases_with_lessons: number | null } | null;
+  notes: string[];
+}
+
+export interface Headline {
+  split: string;
+  alerts: number | null;
+  precision: number | null;
+  recall: number | null;
+  baseline_precision: number | null;
+  human_review_rate: number | null;
+  reviewer_reject_rate: number | null;
+}
+
+export interface EvalRunSummary {
+  eval_run_id: string;
+  started_at: string;
+  finished_at: string | null;
+  dataset: string;
+  dataset_version: string;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  cases: number | null;
+  total_cost_usd: string | null;
+  scored: boolean;
+  headline: Headline | null;
+}
+
+export interface EvalRunsPage {
+  items: EvalRunSummary[];
+}
+
+export interface EvalRunDetail extends EvalRunSummary {
+  dataset_sha256: string;
+  git_commit: string | null;
+  git_dirty: boolean | null;
+  profile: string;
+  prompt_sha256: string;
+  limits: Record<string, number>;
+  counts: {
+    total: number | null;
+    by_status: Record<string, number>;
+    by_human_review_reason: Record<string, number>;
+    by_review_verdict: Record<string, number>;
+  } | null;
+  scored_at: string | null;
+  score: ScoreOut | null;
+}
+
 /** status 0 means the API could not be reached. detail is the API's generic message; errors
  * lists the reasons of a 422 (failed checks or invalid fields), empty otherwise. */
 export class ApiError extends Error {
@@ -294,6 +429,14 @@ export function getCorrections(cursor?: string, limit = 50): Promise<Corrections
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return request<CorrectionsPage>(`/corrections?${params.toString()}`);
+}
+
+export function getEvals(limit = 20): Promise<EvalRunsPage> {
+  return request<EvalRunsPage>(`/evals?limit=${String(limit)}`);
+}
+
+export function getEval(evalRunId: string): Promise<EvalRunDetail> {
+  return request<EvalRunDetail>(`/evals/${encodeURIComponent(evalRunId)}`);
 }
 
 export function postDecision(runId: string, body: DecisionRequest): Promise<DecisionResponse> {

@@ -128,6 +128,71 @@ export const CORRECTION_KINDS = [
   "other",
 ] as const;
 
+/** A rate in [0, 1] as a whole percent; "n/a" when there is nothing to divide by. */
+export function formatRate(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "n/a";
+  return `${Math.round(value * 100)}%`;
+}
+
+/** A change in a rate, in percentage points, with a word for the direction. */
+export function formatPointChange(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "n/a";
+  const points = Math.round(value * 100);
+  if (points === 0) return "no change";
+  return points > 0 ? `up ${points} points` : `down ${Math.abs(points)} points`;
+}
+
+export function formatCount(value: number | null | undefined): string {
+  return value === null || value === undefined ? "n/a" : String(value);
+}
+
+export function formatUsd(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "n/a";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value;
+  if (n === 0) return "$0";
+  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+}
+
+export function formatSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+export function shortHash(value: string | null | undefined, length = 8): string {
+  return value ? value.slice(0, length) : "n/a";
+}
+
+/** The visual kind of an agent answer: drives the colour and the shape of its mark. */
+export type SaysKind = "escalate" | "close" | "review" | "none";
+
+export function saysKind(recommendation: string | null, status: string): SaysKind {
+  if (recommendation === "escalate") return "escalate";
+  if (recommendation === "close") return "close";
+  if (status === "human_review") return "review";
+  return "none";
+}
+
+export function saysLabel(kind: SaysKind): string {
+  if (kind === "escalate") return "Escalate";
+  if (kind === "close") return "Close";
+  return "No answer";
+}
+
+/** Human review reasons in plain words. */
+export function reasonLabel(reason: string | null): string {
+  return reason ? reason.replaceAll("_", " ") : "sent to a person";
+}
+
+/** Verifier names in user words ("Checks", not "verifiers"). */
+export function checkLabel(name: string): string {
+  return name.replaceAll("_", " ");
+}
+
+export function actorLabel(actor: string): string {
+  if (actor.startsWith("human:")) return actor.slice("human:".length);
+  return actor.replaceAll("_", " ");
+}
+
 export function decisionLabel(decision: string): string {
   if (decision === "approve") return "Approved";
   if (decision === "reject") return "Rejected";

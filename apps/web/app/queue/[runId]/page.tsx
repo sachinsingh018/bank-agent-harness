@@ -6,15 +6,22 @@ import {
   CORRECTION_KINDS,
   RECOMMENDATIONS,
   TYPOLOGIES,
+  actorLabel,
+  checkLabel,
   decisionLabel,
   findingText,
-  formatStatus,
+  formatSeconds,
   formatTime,
+  formatUsd,
   readFindings,
-  reviewLabel,
+  reasonLabel,
+  saysKind,
+  saysLabel,
+  type CitedAmount,
   type Claim,
 } from "../../../lib/format";
 import { isValidRunId, webDecisionsEnabled } from "../../../lib/flags";
+import { CheckResult, Meter, ReviewerWord } from "../../_ui/marks";
 import { submitDecision } from "./actions";
 
 const OUTCOME_TEXT: Record<string, { kind: "success" | "error"; text: string }> = {
@@ -68,6 +75,337 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function account(a: { bank: number; acct: string }): string {
+  return `${a.bank}/${a.acct}`;
+}
+
+// ------------------------------------------------------------------ verdict
+
+function Verdict({ run }: { run: RunDetail }) {
+  const recommendation = findingText(run.findings, "recommendation") || null;
+  const confidence = run.findings?.confidence;
+  const kind = saysKind(recommendation, run.status);
+  const typology = findingText(run.findings, "typology");
+  return (
+    <section className="verdict" aria-label="Agent says">
+      <p className="meta">Agent says</p>
+      <div className="line">
+        <p className={`word condensed word-${kind}`}>
+          <span className={`mark ${kind}`} aria-hidden="true" />
+          {saysLabel(kind)}
+        </p>
+        {typeof confidence === "number" && (
+          <span className="number condensed" aria-label={`confidence ${confidence.toFixed(2)}`}>
+            {confidence.toFixed(2)}
+          </span>
+        )}
+      </div>
+      {typeof confidence === "number" && (
+        <>
+          <Meter value={confidence} kind={kind} />
+          <div className="meter-scale" aria-hidden="true">
+            <span className="zero">0</span>
+            <span className="half">0.5 decision line</span>
+            <span className="one">1</span>
+          </div>
+          <p className="about meta">
+            Confidence is the agent&apos;s estimate that the alert is real money laundering. At 0.5
+            or above it must escalate; below 0.5 it must close.
+          </p>
+        </>
+      )}
+      {typology && typology !== "NONE" && (
+        <p>
+          <span className="typology">{typology}</span>{" "}
+          <span className="meta">pattern named by the agent</span>
+        </p>
+      )}
+      {run.status === "human_review" && (
+        <p className="notice error">
+          <span className="mark review" aria-hidden="true" />
+          Sent to a person: {reasonLabel(run.reason)}. The agent never closes a case like this
+          on its own.
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ claims
+
+function quotedFor(amounts: CitedAmount[], txnId: number): CitedAmount[] {
+  return amounts.filter((a) => a.txn_id === txnId);
+}
+
+function Strip({ transfer, quoted }: { transfer: TransferRecord; quoted: CitedAmount[] }) {
+  const t = transfer;
+  return (
+    <details className="strip">
+      <summary>
+        <span className="route">
+          {account(t.from_account)}
+          <span className="to">to</span>
+          {account(t.to_account)}
+        </span>
+        <span className="amount">
+          {t.amount_paid.value} {t.amount_paid.currency} paid
+        </span>
+        <span className="format">{t.format}</span>
+      </summary>
+      <div className="body">
+        <dl className="kv">
+          <dt>Transfer</dt>
+          <dd>{t.txn_id}</dd>
+          <dt>Time</dt>
+          <dd>{formatTime(t.ts)}</dd>
+          <dt>From</dt>
+          <dd>
+            bank {t.from_account.bank}, account {t.from_account.acct}
+          </dd>
+          <dt>To</dt>
+          <dd>
+            bank {t.to_account.bank}, account {t.to_account.acct}
+          </dd>
+          <dt>Paid</dt>
+          <dd>
+            {t.amount_paid.value} {t.amount_paid.currency}
+          </dd>
+          <dt>Received</dt>
+          <dd>
+            {t.amount_received.value} {t.amount_received.currency}
+          </dd>
+          <dt>Format</dt>
+          <dd>{t.format}</dd>
+        </dl>
+        {quoted.length > 0 && (
+          <p className="quoted">
+            The agent quoted{" "}
+            {quoted.map((a) => `${a.value} ${a.currency} ${a.side}`).join(" and ")}.
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function ClaimItem({
+  claim,
+  byId,
+  missing,
+}: {
+  claim: Claim;
+  byId: Map<number, TransferRecord>;
+  missing: Set<number>;
+}) {
+  const absent = claim.txn_ids.filter((id) => !byId.has(id));
+  return (
+    <li>
+      <div>
+        <p className="statement">{claim.statement}</p>
+        {claim.txn_ids.flatMap((id) => {
+          const t = byId.get(id);
+          return t ? [<Strip key={id} transfer={t} quoted={quotedFor(claim.amounts, id)} />] : [];
+        })}
+        {absent.length > 0 && (
+          <p className="notice warn">
+            Transfers {absent.join(", ")} are not shown:{" "}
+            {absent.every((id) => missing.has(id))
+              ? "they were not found in the data."
+              : "they were not fetched (lookup limit)."}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// ------------------------------------------------------------------ rail
+
+function ChecksSection({ run }: { run: RunDetail }) {
+  return (
+    <section aria-labelledby="checks">
+      <h2 id="checks">Checks</h2>
+      <p className="meta">Fixed rules run on every answer before anyone sees it.</p>
+      {run.verifier_results.length === 0 ? (
+        <p className="muted">No checks ran for this case.</p>
+      ) : (
+        <ul className="checks">
+          {run.verifier_results.map((v, i) => (
+            <li key={i}>
+              <span>{checkLabel(v.name)}</span>
+              <CheckResult passed={v.passed} />
+              {v.errors.length > 0 && (
+                <span className="errors">
+                  <ul>
+                    {v.errors.map((e, j) => (
+                      <li key={j}>{e}</li>
+                    ))}
+                  </ul>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ReviewerSection({ run }: { run: RunDetail }) {
+  const review = run.review;
+  if (!review) {
+    return (
+      <section aria-labelledby="reviewer">
+        <h2 id="reviewer">Reviewer</h2>
+        <p className="muted">No reviewer agent ran for this case.</p>
+      </section>
+    );
+  }
+  const body = review.review ?? {};
+  const reasons = strings(body.reasons);
+  const concerns = Array.isArray(body.concerns) ? body.concerns.filter(isRecord) : [];
+  const confidence = typeof body.confidence === "number" ? body.confidence.toFixed(2) : null;
+  const count = reasons.length + concerns.length;
+  return (
+    <section aria-labelledby="reviewer">
+      <h2 id="reviewer">Reviewer</h2>
+      <p>
+        <ReviewerWord verdict={review.verdict} />
+        {review.failure_reason ? ` (${reasonLabel(review.failure_reason)})` : ""}
+        {confidence !== null && <span className="meta">, sure at {confidence}</span>}
+      </p>
+      <p className="meta">
+        A second agent checks the answer against its own checklist. A rejection never closes the
+        case: it comes to a person.
+      </p>
+      {count > 0 && (
+        <details className="expander simple">
+          <summary>
+            {reasons.length} {reasons.length === 1 ? "reason" : "reasons"}
+            {concerns.length > 0 &&
+              `, ${concerns.length} ${concerns.length === 1 ? "concern" : "concerns"}`}
+          </summary>
+          {reasons.length > 0 && (
+            <ul className="plain">
+              {reasons.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          )}
+          {concerns.length > 0 && (
+            <>
+              <h3>Concerns</h3>
+              <ul className="plain">
+                {concerns.map((c, i) => (
+                  <li key={i}>
+                    {typeof c.claim_index === "number" ? `Claim ${c.claim_index + 1}: ` : ""}
+                    {typeof c.issue === "string" ? c.issue : ""}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </details>
+      )}
+      <p className="meta">
+        {review.model.model}, prompt {review.prompt.version}, {review.tool_steps} tool steps,{" "}
+        {formatSeconds(review.wall_ms)}, {formatUsd(review.cost_usd)}
+      </p>
+    </section>
+  );
+}
+
+function RunSection({ run }: { run: RunDetail }) {
+  return (
+    <section aria-labelledby="run">
+      <h2 id="run">Run</h2>
+      <dl className="kv">
+        <dt>Model</dt>
+        <dd>
+          {run.model.model} <span className="meta">via {run.model.provider}</span>
+        </dd>
+        <dt>Prompt</dt>
+        <dd>{run.prompt.version}</dd>
+        <dt>Tool steps</dt>
+        <dd>{run.tool_steps}</dd>
+        <dt>Tokens</dt>
+        <dd>
+          {run.totals.input_tokens.toLocaleString("en-US")} in,{" "}
+          {run.totals.output_tokens.toLocaleString("en-US")} out
+        </dd>
+        <dt>Cost</dt>
+        <dd>{formatUsd(run.cost_usd)}</dd>
+        <dt>Time</dt>
+        <dd>{formatSeconds(run.wall_ms)}</dd>
+        <dt>Recorded</dt>
+        <dd>{formatTime(run.created_at)}</dd>
+        {run.eval_run_id && (
+          <>
+            <dt>Eval run</dt>
+            <dd>
+              <Link href="/evals">{run.eval_run_id}</Link>
+            </dd>
+          </>
+        )}
+        {run.trace_id && (
+          <>
+            <dt>Trace</dt>
+            <dd>{run.trace_id}</dd>
+          </>
+        )}
+      </dl>
+    </section>
+  );
+}
+
+function LessonsSection({ run }: { run: RunDetail }) {
+  const lessons = run.lessons ?? [];
+  if (lessons.length === 0) return null;
+  return (
+    <section aria-labelledby="lessons-shown">
+      <h2 id="lessons-shown">Lessons shown</h2>
+      <p className="meta">
+        Saved by people on earlier, different alerts. Shown to the agent as general guidance, not
+        as evidence about this case.
+      </p>
+      <ul className="plain">
+        {lessons.map((lesson) => (
+          <li key={lesson.id}>
+            {lesson.text} <span className="meta">(lesson {lesson.id})</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function AuditSection({ run }: { run: RunDetail }) {
+  return (
+    <section aria-labelledby="audit">
+      <h2 id="audit">Audit trail</h2>
+      <p className="meta">Append only: entries are never changed or removed.</p>
+      {run.events.length === 0 ? (
+        <p className="muted">No events recorded.</p>
+      ) : (
+        <ol className="audit">
+          {run.events.map((e, i) => (
+            <li key={i}>
+              <span className="what">{e.event.replaceAll("_", " ")}</span>
+              <span className="meta">
+                {actorLabel(e.actor)}, {formatTime(e.at)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 function EditedValues({ run }: { run: RunDetail }) {
   const event = run.events.find((e) => e.event === "edited");
   if (!event) return null;
@@ -85,171 +423,14 @@ function EditedValues({ run }: { run: RunDetail }) {
   );
 }
 
-function account(a: { bank: number; acct: string }): string {
-  return `${a.bank} / ${a.acct}`;
-}
-
-function TransferTable({ transfers }: { transfers: TransferRecord[] }) {
-  if (transfers.length === 0) return null;
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th className="num">Txn</th>
-            <th>Time</th>
-            <th>From (bank / account)</th>
-            <th>To (bank / account)</th>
-            <th className="num">Paid</th>
-            <th className="num">Received</th>
-            <th>Format</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transfers.map((t) => (
-            <tr key={t.txn_id}>
-              <td className="num mono">{t.txn_id}</td>
-              <td>{formatTime(t.ts)}</td>
-              <td className="mono">{account(t.from_account)}</td>
-              <td className="mono">{account(t.to_account)}</td>
-              <td className="num">
-                {t.amount_paid.value} {t.amount_paid.currency}
-              </td>
-              <td className="num">
-                {t.amount_received.value} {t.amount_received.currency}
-              </td>
-              <td>{t.format}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ClaimBlock({
-  claim,
-  index,
-  byId,
-  missing,
-}: {
-  claim: Claim;
-  index: number;
-  byId: Map<number, TransferRecord>;
-  missing: Set<number>;
-}) {
-  const found = claim.txn_ids.flatMap((id) => {
-    const t = byId.get(id);
-    return t ? [t] : [];
-  });
-  const absent = claim.txn_ids.filter((id) => !byId.has(id));
-  return (
-    <div className="claim">
-      <p>
-        <strong>Claim {index + 1}.</strong> {claim.statement}
-      </p>
-      <TransferTable transfers={found} />
-      {absent.length > 0 && (
-        <p className="notice warn">
-          Not shown: {absent.join(", ")} (
-          {absent.every((id) => missing.has(id)) ? "not found in the data" : "not fetched"}).
-        </p>
-      )}
-      {claim.amounts.length > 0 && (
-        <>
-          <p className="muted">Amounts the agent quoted:</p>
-          <ul className="plain">
-            {claim.amounts.map((a, i) => (
-              <li key={i}>
-                txn <span className="mono">{a.txn_id}</span>, {a.side}: {a.value} {a.currency}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function strings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-}
-
-function ReviewerPanel({ run }: { run: RunDetail }) {
-  const review = run.review;
-  if (!review) {
-    return <p className="muted">No reviewer ran for this case.</p>;
-  }
-  const body = review.review ?? {};
-  const reasons = strings(body.reasons);
-  const concerns = Array.isArray(body.concerns) ? body.concerns.filter(isRecord) : [];
-  const confidence = typeof body.confidence === "number" ? body.confidence.toFixed(2) : null;
-  return (
-    <div className="panel">
-      <p className="muted">
-        A second agent checked the findings with its own checklist. A rejection or failure never
-        closes the case: it comes to you.
-      </p>
-      <p>
-        Verdict: <strong>{reviewLabel(review.verdict)}</strong>
-        {review.failure_reason ? ` (${review.failure_reason.replaceAll("_", " ")})` : ""}
-        {confidence !== null ? `, reviewer confidence ${confidence}` : ""}
-      </p>
-      {reasons.length > 0 && (
-        <>
-          <p className="muted">Reasons:</p>
-          <ul className="plain">
-            {reasons.map((r, i) => (
-              <li key={i}>{r}</li>
-            ))}
-          </ul>
-        </>
-      )}
-      {concerns.length > 0 && (
-        <>
-          <p className="muted">Concerns:</p>
-          <ul className="plain">
-            {concerns.map((c, i) => (
-              <li key={i}>
-                {typeof c.claim_index === "number" ? `Claim ${c.claim_index + 1}: ` : ""}
-                {typeof c.issue === "string" ? c.issue : ""}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <p className="muted">
-        {review.model.provider} / {review.model.model}, prompt {review.prompt.version},{" "}
-        {review.tool_steps} tool steps, {(review.wall_ms / 1000).toFixed(1)} s, ${review.cost_usd}
-      </p>
-    </div>
-  );
-}
-
-function DecisionPanel({ run }: { run: RunDetail }) {
-  if (run.decision) {
-    const d = run.decision;
-    return (
-      <div className="panel">
-        <p>
-          <strong>{decisionLabel(d.decision)}</strong> by {d.actor.replace(/^human:/, "")} at{" "}
-          {formatTime(d.at)}.
-        </p>
-        {d.note && <p>Note: {d.note}</p>}
-        <EditedValues run={run} />
-      </div>
-    );
-  }
-  if (!webDecisionsEnabled()) {
-    return <p className="notice">Decisions are disabled in this web deployment.</p>;
-  }
+function DecisionForm({ run }: { run: RunDetail }) {
   const action = submitDecision.bind(null, run.run_id);
   const canEdit = run.module === "aml" && run.findings !== null;
   const confidence = run.findings?.confidence;
   return (
-    <form className="decision panel" action={action}>
+    <form className="decision" action={action}>
       <fieldset>
-        <legend className="muted">Your decision</legend>
+        <legend>Your decision</legend>
         <label>
           <input type="radio" name="decision" value="approve" required /> Approve
         </label>
@@ -263,14 +444,14 @@ function DecisionPanel({ run }: { run: RunDetail }) {
         </label>
       </fieldset>
       <label htmlFor="note">
-        Note (required when you reject or approve with edits, 2000 characters at most)
+        Note (needed when you reject or approve with edits, 2000 characters at most)
       </label>
       <textarea id="note" name="note" maxLength={2000} />
 
       {canEdit && (
-        <fieldset className="stacked">
-          <legend className="muted">Edits (used only with Approve with edits)</legend>
-          <p className="muted">
+        <details>
+          <summary>Edits (used only with Approve with edits)</summary>
+          <p className="meta">
             Claims and figures stay as the agent wrote them. The edited answer must pass the same
             checks as the agent&apos;s, or nothing is saved.
           </p>
@@ -315,16 +496,16 @@ function DecisionPanel({ run }: { run: RunDetail }) {
             maxLength={1200}
             defaultValue={findingText(run.findings, "narrative")}
           />
-        </fieldset>
+        </details>
       )}
 
-      <fieldset className="stacked">
-        <legend className="muted">Save a lesson for future cases (optional)</legend>
-        <p className="muted">
-          A short rule in plain words, for example &quot;Regular payroll from one employer to
-          many staff accounts is not fan-out.&quot; No dates, month names or years.
+      <details>
+        <summary>Save a lesson for future cases (optional)</summary>
+        <p className="meta">
+          A short rule in plain words, for example &quot;Regular payroll from one employer to many
+          staff accounts is not fan-out.&quot; No dates, month names or years.
         </p>
-        <label htmlFor="correction_kind">Kind</label>
+        <label htmlFor="correction_kind">About</label>
         <select id="correction_kind" name="correction_kind" defaultValue="">
           <option value="">no lesson</option>
           {CORRECTION_KINDS.map((k) => (
@@ -333,13 +514,47 @@ function DecisionPanel({ run }: { run: RunDetail }) {
             </option>
           ))}
         </select>
-        <label htmlFor="correction_rule">Rule (10 to 500 characters)</label>
+        <label htmlFor="correction_rule">Lesson (10 to 500 characters)</label>
         <textarea id="correction_rule" name="correction_rule" minLength={10} maxLength={500} />
-      </fieldset>
+      </details>
       <button type="submit">Submit decision</button>
     </form>
   );
 }
+
+function DecisionSection({ run }: { run: RunDetail }) {
+  let content;
+  if (run.decision) {
+    const d = run.decision;
+    content = (
+      <>
+        <p>
+          <strong>{decisionLabel(d.decision)}</strong> by {actorLabel(d.actor)}
+        </p>
+        <p className="meta">{formatTime(d.at)}</p>
+        {d.note && <p>Note: {d.note}</p>}
+        <EditedValues run={run} />
+      </>
+    );
+  } else if (!webDecisionsEnabled()) {
+    content = (
+      <p className="muted">
+        Decisions are disabled in this web deployment. In the full setup a person approves,
+        edits or rejects the agent&apos;s answer here.
+      </p>
+    );
+  } else {
+    content = <DecisionForm run={run} />;
+  }
+  return (
+    <section aria-labelledby="decision">
+      <h2 id="decision">Decision</h2>
+      {content}
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ page
 
 export default async function CasePage({
   params,
@@ -362,10 +577,10 @@ export default async function CasePage({
     const text =
       err instanceof ApiError && err.status === 0
         ? API_WAKING_MESSAGE
-        : "The case could not be loaded.";
+        : "The case could not be loaded. Go back to the queue and try again.";
     return (
       <>
-        <p>
+        <p className="back">
           <Link href="/queue">Back to the queue</Link>
         </p>
         <p className="notice error">{text}</p>
@@ -375,20 +590,16 @@ export default async function CasePage({
 
   const findings = readFindings(run.findings);
   const byId = new Map(run.cited_transfers.map((t) => [t.txn_id, t]));
-  const lessons = run.lessons ?? [];
   const missing = new Set(run.missing_txn_ids);
   const notice = outcome ? OUTCOME_TEXT[outcome] : undefined;
 
   return (
     <>
-      <p>
+      <p className="back">
         <Link href="/queue">Back to the queue</Link>
       </p>
-      <h1>
-        Alert <span className="mono">{run.case_id}</span>
-      </h1>
       {notice && (
-        <div className={`notice ${notice.kind}`}>
+        <div className={`notice ${notice.kind}`} role="status">
           <p>{notice.text}</p>
           {errors.length > 0 && (
             <ul>
@@ -400,232 +611,165 @@ export default async function CasePage({
         </div>
       )}
 
-      <dl className="facts panel">
-        <div>
-          <dt>Status</dt>
-          <dd>{formatStatus(run.status, run.reason)}</dd>
-        </div>
-        <div>
-          <dt>Recommendation</dt>
-          <dd>{findingText(run.findings, "recommendation") || "none"}</dd>
-        </div>
-        <div>
-          <dt>Confidence</dt>
-          <dd>{findingText(run.findings, "confidence") || "none"}</dd>
-        </div>
-        <div>
-          <dt>Typology</dt>
-          <dd>{findingText(run.findings, "typology") || "none"}</dd>
-        </div>
-        <div>
-          <dt>Model</dt>
-          <dd>
-            {run.model.provider} / {run.model.model}
-          </dd>
-        </div>
-        <div>
-          <dt>Prompt</dt>
-          <dd>{run.prompt.version}</dd>
-        </div>
-        <div>
-          <dt>Tool steps</dt>
-          <dd>{run.tool_steps}</dd>
-        </div>
-        <div>
-          <dt>Time and cost</dt>
-          <dd>
-            {(run.wall_ms / 1000).toFixed(1)} s, ${run.cost_usd}
-          </dd>
-        </div>
-        {run.trace_id ? (
-          <div>
-            <dt>Langfuse trace</dt>
-            <dd>
-              <code>{run.trace_id}</code>
-            </dd>
-          </div>
-        ) : null}
-      </dl>
+      <div className="case-grid">
+        <div className="case-main">
+          <h1>
+            <span className="meta">Alert </span>
+            {run.case_id}
+          </h1>
+          <Verdict run={run} />
 
-      <h2>Reviewer</h2>
-      <ReviewerPanel run={run} />
-
-      <h2>Decision</h2>
-      <DecisionPanel run={run} />
-
-      {findings ? (
-        <>
-          <h2>Narrative</h2>
-          <p>{findings.narrative}</p>
-
-          <h2>Claims</h2>
-          {findings.claims.map((claim, i) => (
-            <ClaimBlock key={i} claim={claim} index={i} byId={byId} missing={missing} />
-          ))}
-
-          {findings.figures.length > 0 && (
+          {findings ? (
             <>
-              <h2>Figures</h2>
+              <h2>Narrative</h2>
+              <p className="prose">{findings.narrative}</p>
+
+              <h2>Claims</h2>
+              <p className="meta">
+                Each claim cites real transfers. Open a transfer to see its details.
+              </p>
+              {findings.claims.length === 0 ? (
+                <p className="muted">The agent made no claims.</p>
+              ) : (
+                <ol className="claims">
+                  {findings.claims.map((claim, i) => (
+                    <ClaimItem key={i} claim={claim} byId={byId} missing={missing} />
+                  ))}
+                </ol>
+              )}
+
+              {findings.figures.length > 0 && (
+                <>
+                  <h2>Figures</h2>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th scope="col">What</th>
+                          <th scope="col" className="num">
+                            Value
+                          </th>
+                          <th scope="col">Side</th>
+                          <th scope="col">Transfers</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {findings.figures.map((f, i) => (
+                          <tr key={i}>
+                            <td>{f.kind.replaceAll("_", " ")}</td>
+                            <td className="num">
+                              {f.value} {f.currency ?? ""}
+                            </td>
+                            <td>{f.side ?? ""}</td>
+                            <td className="wrap">{f.txn_ids.join(", ")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <p className="notice warn">
+              The agent did not produce an answer for this case. Decide from the alert itself.
+            </p>
+          )}
+
+          {run.not_fetched_txn_ids.length > 0 && (
+            <p className="notice warn">
+              {run.not_fetched_txn_ids.length} cited transfers were not fetched (lookup limit).
+            </p>
+          )}
+
+          <h2>Run detail</h2>
+          <details className="expander simple">
+            <summary>Model calls ({run.model_calls.length})</summary>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Model</th>
+                    <th scope="col" className="num">
+                      Input tokens
+                    </th>
+                    <th scope="col" className="num">
+                      Output tokens
+                    </th>
+                    <th scope="col" className="num">
+                      Cache read
+                    </th>
+                    <th scope="col" className="num">
+                      Latency
+                    </th>
+                    <th scope="col">Stop reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {run.model_calls.map((c, i) => (
+                    <tr key={i}>
+                      <td>{c.model}</td>
+                      <td className="num">{c.input_tokens}</td>
+                      <td className="num">{c.output_tokens}</td>
+                      <td className="num">{c.cache_read_tokens}</td>
+                      <td className="num">{c.latency_ms} ms</td>
+                      <td>{c.stop_reason.replaceAll("_", " ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <details className="expander simple">
+            <summary>
+              Tool calls{run.tool_calls === null ? "" : ` (${run.tool_calls.length})`}
+            </summary>
+            {run.tool_calls === null ? (
+              <p className="muted">Tool call detail is not available for this run.</p>
+            ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Kind</th>
-                      <th className="num">Value</th>
-                      <th>Side</th>
-                      <th>Transfers</th>
+                      <th scope="col" className="num">
+                        Step
+                      </th>
+                      <th scope="col">Tool</th>
+                      <th scope="col">Arguments</th>
+                      <th scope="col">Result</th>
+                      <th scope="col" className="num">
+                        Time
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {findings.figures.map((f, i) => (
-                      <tr key={i}>
-                        <td>{f.kind}</td>
-                        <td className="num">
-                          {f.value} {f.currency ?? ""}
+                    {run.tool_calls.map((t) => (
+                      <tr key={t.index}>
+                        <td className="num">{t.index}</td>
+                        <td>{t.name.replaceAll("_", " ")}</td>
+                        <td className="wrap">{JSON.stringify(t.arguments)}</td>
+                        <td>
+                          {t.ok ? "ok" : `failed (${t.error_code ?? "error"})`}
+                          {t.truncated ? ", cut short" : ""}
                         </td>
-                        <td>{f.side ?? ""}</td>
-                        <td className="wrap mono">{f.txn_ids.join(", ")}</td>
+                        <td className="num">{t.duration_ms} ms</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </>
-          )}
-        </>
-      ) : (
-        <p className="notice warn">
-          The agent did not produce findings for this case. Decide from the alert itself.
-        </p>
-      )}
-
-      {run.not_fetched_txn_ids.length > 0 && (
-        <p className="notice warn">
-          {run.not_fetched_txn_ids.length} cited transfers were not fetched (lookup limit).
-        </p>
-      )}
-
-      {lessons.length > 0 && (
-        <>
-          <h2>Lessons shown to the agent</h2>
-          <p className="muted">
-            Saved by reviewers on earlier, different cases. Shown as general guidance, not as
-            evidence about this case.
-          </p>
-          <ul>
-            {lessons.map((lesson) => (
-              <li key={lesson.id}>
-                {lesson.text} <span className="muted mono">(lesson {lesson.id})</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      <h2>Verifier results</h2>
-      {run.verifier_results.length === 0 ? (
-        <p className="muted">No verifier ran.</p>
-      ) : (
-        <ul className="plain">
-          {run.verifier_results.map((v, i) => (
-            <li key={i}>
-              <span className={v.passed ? "pass" : "fail"}>{v.passed ? "pass" : "fail"}</span>{" "}
-              {v.name}
-              {v.errors.length > 0 && (
-                <ul className="plain">
-                  {v.errors.map((e, j) => (
-                    <li key={j}>{e}</li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h2>Model calls</h2>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Model</th>
-              <th className="num">Input tokens</th>
-              <th className="num">Output tokens</th>
-              <th className="num">Cache read</th>
-              <th className="num">Latency</th>
-              <th>Stop reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.model_calls.map((c, i) => (
-              <tr key={i}>
-                <td>
-                  {c.provider} / {c.model}
-                </td>
-                <td className="num">{c.input_tokens}</td>
-                <td className="num">{c.output_tokens}</td>
-                <td className="num">{c.cache_read_tokens}</td>
-                <td className="num">{c.latency_ms} ms</td>
-                <td>{c.stop_reason}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <h2>Tool calls</h2>
-      {run.tool_calls === null ? (
-        <p className="muted">Tool call detail is not available for this run.</p>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th className="num">#</th>
-                <th>Tool</th>
-                <th>Arguments</th>
-                <th>Result</th>
-                <th className="num">Duration</th>
-              </tr>
-            </thead>
-            <tbody>
-              {run.tool_calls.map((t) => (
-                <tr key={t.index}>
-                  <td className="num">{t.index}</td>
-                  <td>{t.name}</td>
-                  <td className="wrap mono">{JSON.stringify(t.arguments)}</td>
-                  <td>
-                    {t.ok ? "ok" : `failed (${t.error_code ?? "error"})`}
-                    {t.truncated ? ", truncated" : ""}
-                  </td>
-                  <td className="num">{t.duration_ms} ms</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            )}
+          </details>
         </div>
-      )}
 
-      <h2>Audit trail</h2>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Event</th>
-              <th>Actor</th>
-              <th>Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.events.map((e, i) => (
-              <tr key={i}>
-                <td>{e.event.replaceAll("_", " ")}</td>
-                <td>{e.actor}</td>
-                <td>{formatTime(e.at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <aside className="rail" aria-label="Checks, review and decision">
+          <ChecksSection run={run} />
+          <ReviewerSection run={run} />
+          <RunSection run={run} />
+          <LessonsSection run={run} />
+          <AuditSection run={run} />
+          <DecisionSection run={run} />
+        </aside>
       </div>
     </>
   );

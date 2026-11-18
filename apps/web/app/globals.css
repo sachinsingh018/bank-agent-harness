@@ -1,27 +1,40 @@
+/* Alert desk styles. Tokens from docs/plans/ui-redesign.md: banknote green, amber and brick on
+ * a cool paper ground. Separation by rules and space, no shadows, no gradients. */
+
 :root {
   color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted: #5c5c5c;
-  --border: #d8d8d8;
-  --panel: #f6f6f6;
-  --accent: #1f5fbf;
-  --ok: #1e7a3a;
-  --bad: #b3261e;
-  --warn-bg: #fff4d6;
+  --paper: #f3f5f2;
+  --ink: #1c2830;
+  --intaglio: #2d6a5c;
+  --rule: #d3d9d4;
+  --signal: #a86a12;
+  /* Amber for small text: the signal token is below AA on paper at body size, so words
+   * use this darker step of the same hue. Marks and the large verdict use --signal. */
+  --signal-text: #8f5a0e;
+  --brick: #a3393c;
+  --steel: #56656f;
+
+  --size-meta: 0.8125rem;
+  --size-body: 0.9375rem;
+  --size-subhead: 1.125rem;
+  --size-title: 1.5rem;
+  --size-verdict: 2.75rem;
+
+  --radius-panel: 3px;
+  --radius-mark: 2px;
+  --prose: 72ch;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121212;
-    --fg: #e8e8e8;
-    --muted: #a8a8a8;
-    --border: #363636;
-    --panel: #1d1d1d;
-    --accent: #7fb0ff;
-    --ok: #6fd08c;
-    --bad: #ff8a80;
-    --warn-bg: #3a3000;
+    --paper: #172128;
+    --ink: #e4e9e6;
+    --intaglio: #6fb3a2;
+    --rule: #2c3a43;
+    --signal: #e0a44a;
+    --signal-text: #e0a44a;
+    --brick: #e07a7c;
+    --steel: #9aa8b1;
   }
 }
 
@@ -29,187 +42,746 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-size: var(--size-body);
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
 a {
-  color: var(--accent);
+  color: var(--intaglio);
+  text-underline-offset: 0.15em;
 }
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--intaglio);
+  outline-offset: 2px;
+  border-radius: var(--radius-mark);
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 0.5rem;
+  background: var(--paper);
+  padding: 0.25rem 0.5rem;
+  z-index: 10;
+}
+
+/* Condensed width of the same family for headings and the verdict. */
+.condensed,
+h1,
+h2,
+.brand {
+  font-stretch: 75%;
+  font-variation-settings: "wdth" 75;
+  letter-spacing: -0.01em;
+}
+
+/* ------------------------------------------------------------------ header */
 
 .site-header {
-  display: flex;
-  gap: 1rem;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule);
 }
 
-.demo-banner {
-  margin: 0;
-  padding: 0.5rem 1rem;
-  background: var(--warn-bg);
-  border-bottom: 1px solid var(--border);
-  text-align: center;
+.site-header .bar {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: baseline;
 }
 
 .brand {
-  font-weight: 600;
-  color: var(--fg);
+  font-size: var(--size-subhead);
+  font-weight: 650;
+  color: var(--ink);
   text-decoration: none;
+  margin-right: auto;
+}
+
+.site-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+}
+
+.site-header nav a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.site-header nav a:hover {
+  color: var(--intaglio);
+  text-decoration: underline;
+}
+
+.replay-banner {
+  margin: 0;
+  border-top: 1px solid var(--rule);
+  color: var(--steel);
+  font-size: var(--size-meta);
+}
+
+.replay-banner p {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 0.4rem 1rem;
 }
 
 main {
-  max-width: 72rem;
+  max-width: 76rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1.25rem 1rem 3rem;
 }
 
+/* ------------------------------------------------------------------ type */
+
 h1 {
-  font-size: 1.5rem;
-  margin: 0.5rem 0 1rem;
+  font-size: var(--size-title);
+  font-weight: 650;
+  line-height: 1.2;
+  margin: 0.25rem 0 0.75rem;
 }
 
 h2 {
-  font-size: 1.15rem;
-  margin: 1.75rem 0 0.5rem;
+  font-size: var(--size-subhead);
+  font-weight: 650;
+  line-height: 1.25;
+  margin: 2rem 0 0.5rem;
 }
 
-.muted {
-  color: var(--muted);
+h3 {
+  font-size: var(--size-body);
+  font-weight: 650;
+  margin: 1.25rem 0 0.35rem;
 }
 
-.tabs {
-  display: flex;
-  gap: 0.5rem;
+p {
+  margin: 0.4rem 0;
+}
+
+.prose,
+.lede {
+  max-width: var(--prose);
+}
+
+.lede {
+  color: var(--steel);
   margin-bottom: 1rem;
+}
+
+.meta,
+.muted {
+  color: var(--steel);
+  font-size: var(--size-meta);
+}
+
+.back {
+  font-size: var(--size-meta);
+  margin: 0 0 0.75rem;
+}
+
+/* ------------------------------------------------------------------ marks
+ * A small shape next to every coloured word, so colour is never the only signal. */
+
+.mark {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.4rem;
+  vertical-align: 0.05em;
+  flex: none;
+}
+
+.mark.escalate {
+  background: var(--signal);
+  transform: rotate(45deg) scale(0.85);
+  border-radius: 1px;
+}
+
+.mark.close {
+  border: 2px solid var(--steel);
+  border-radius: 50%;
+}
+
+.mark.review {
+  background: var(--brick);
+  border-radius: var(--radius-mark);
+}
+
+.mark.passed {
+  border: 2px solid var(--intaglio);
+  border-radius: 50%;
+  background: var(--intaglio);
+}
+
+.mark.failed {
+  background: var(--brick);
+  border-radius: var(--radius-mark);
+}
+
+.mark.none {
+  border: 2px dashed var(--steel);
+  border-radius: 50%;
+}
+
+.word-escalate {
+  color: var(--signal-text);
+}
+
+.word-close {
+  color: var(--steel);
+}
+
+.word-review,
+.word-failed {
+  color: var(--brick);
+}
+
+.word-passed {
+  color: var(--intaglio);
+}
+
+.says {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ meter */
+
+.meter {
+  --c: var(--steel);
+  position: relative;
+  height: 0.5rem;
+  background: var(--rule);
+  border-radius: var(--radius-mark);
+}
+
+.meter.escalate {
+  --c: var(--signal);
+}
+
+.meter.review {
+  --c: var(--brick);
+}
+
+.meter .span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--c) 40%, transparent);
+}
+
+.meter .cut {
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+
+.meter .at {
+  position: absolute;
+  top: -0.3rem;
+  bottom: -0.3rem;
+  width: 0.35rem;
+  margin-left: -0.175rem;
+  background: var(--c);
+  border: 1px solid var(--paper);
+  border-radius: 1px;
+}
+
+.meter.mini {
+  display: inline-block;
+  width: 3.5rem;
+  height: 0.3rem;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+
+.meter.mini .cut {
+  top: -0.15rem;
+  bottom: -0.15rem;
+  width: 1px;
+  margin-left: 0;
+}
+
+.meter.mini .at {
+  top: -0.2rem;
+  bottom: -0.2rem;
+  width: 0.25rem;
+  margin-left: -0.125rem;
+}
+
+.meter-scale {
+  position: relative;
+  height: 1.2rem;
+  margin-top: 0.35rem;
+  color: var(--steel);
+  font-size: var(--size-meta);
+}
+
+.meter-scale span {
+  position: absolute;
+  top: 0;
+}
+
+.meter-scale .zero {
+  left: 0;
+}
+
+.meter-scale .half {
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.meter-scale .one {
+  right: 0;
+}
+
+/* ------------------------------------------------------------------ verdict */
+
+.verdict {
+  margin: 0.25rem 0 1.25rem;
+  max-width: 34rem;
+}
+
+.verdict .line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.verdict .word {
+  font-size: var(--size-verdict);
+  font-weight: 700;
+  line-height: 1;
+  margin: 0;
+}
+
+.verdict .word .mark {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-right: 0.75rem;
+  vertical-align: 0.2em;
+}
+
+.verdict .word .mark.close {
+  border-width: 3px;
+}
+
+.verdict .number {
+  font-size: var(--size-verdict);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.verdict .meter {
+  margin-top: 0.9rem;
+}
+
+.verdict .about {
+  margin-top: 0.4rem;
+}
+
+.typology {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------------ case layout */
+
+.case-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 21rem);
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.case-main {
+  min-width: 0;
+}
+
+.rail {
+  border-left: 1px solid var(--rule);
+  padding-left: 1.5rem;
+  min-width: 0;
+}
+
+.rail section {
+  padding: 0.25rem 0 1rem;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 0.75rem;
+}
+
+.rail section:last-child {
+  border-bottom: none;
+}
+
+.rail h2 {
+  margin: 0.5rem 0 0.4rem;
+}
+
+@media (max-width: 52rem) {
+  .case-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
+  .rail {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+    padding-left: 0;
+    padding-top: 0.5rem;
+  }
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.2rem 0.9rem;
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--steel);
+  font-size: var(--size-meta);
+  padding-top: 0.1rem;
+}
+
+.kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.checks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.checks li {
+  display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 0;
 }
 
-.tabs a {
-  padding: 0.3rem 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  text-decoration: none;
+.checks .errors {
+  display: block;
+  width: 100%;
 }
 
-.tabs a[aria-current="page"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
+.checks ul {
+  margin: 0.15rem 0 0.25rem;
+  padding-left: 1.1rem;
+  font-size: var(--size-meta);
+  color: var(--brick);
 }
+
+.audit {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.audit li {
+  padding: 0.3rem 0 0.3rem 0.75rem;
+  border-left: 2px solid var(--rule);
+}
+
+.audit .what {
+  display: block;
+}
+
+/* ------------------------------------------------------------------ claims and strips */
+
+.claims {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: claim;
+}
+
+.claims > li {
+  counter-increment: claim;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+}
+
+.claims > li::before {
+  content: counter(claim);
+  color: var(--steel);
+  font-weight: 600;
+}
+
+.claims .statement {
+  max-width: var(--prose);
+  margin: 0 0 0.5rem;
+}
+
+.strip {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  margin: 0.35rem 0;
+}
+
+.strip summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto auto;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+  padding: 0.35rem 0.6rem;
+}
+
+.strip summary::-webkit-details-marker {
+  display: none;
+}
+
+.strip summary::before,
+.expander > summary::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid var(--steel);
+  border-bottom: 2px solid var(--steel);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease-out;
+  align-self: center;
+}
+
+.strip[open] summary::before,
+.expander[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.strip .route {
+  overflow-wrap: anywhere;
+}
+
+.strip .route .to {
+  color: var(--steel);
+  padding: 0 0.3rem;
+}
+
+.strip .amount {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.strip .format {
+  color: var(--steel);
+  font-size: var(--size-meta);
+  white-space: nowrap;
+}
+
+.strip .body {
+  border-top: 1px solid var(--rule);
+  padding: 0.5rem 0.6rem 0.6rem 2rem;
+}
+
+@media (max-width: 36rem) {
+  .strip summary {
+    grid-template-columns: 1rem minmax(0, 1fr) auto;
+  }
+
+  .strip .format {
+    grid-column: 2 / -1;
+  }
+}
+
+.quoted {
+  font-size: var(--size-meta);
+  color: var(--steel);
+  margin-top: 0.4rem;
+}
+
+/* ------------------------------------------------------------------ tables */
 
 .table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 6px;
   margin: 0.5rem 0;
+  border-top: 1px solid var(--ink);
 }
 
 table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 0.9rem;
 }
 
 th,
 td {
-  padding: 0.4rem 0.6rem;
+  padding: 0.45rem 0.75rem 0.45rem 0;
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule);
   white-space: nowrap;
-  vertical-align: top;
+  vertical-align: baseline;
 }
 
 th {
-  background: var(--panel);
+  font-size: var(--size-meta);
   font-weight: 600;
-}
-
-tr:last-child td {
-  border-bottom: none;
+  color: var(--steel);
 }
 
 td.wrap {
   white-space: normal;
+  min-width: 16rem;
 }
 
 .num {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
-code,
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
+.views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0 0 0.75rem;
 }
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  margin: 0.5rem 0;
-}
-
-.facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.5rem 1rem;
-  margin: 0;
-}
-
-.facts dt {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.facts dd {
-  margin: 0;
-  font-weight: 600;
-}
-
-.pass {
-  color: var(--ok);
-  font-weight: 600;
-}
-
-.fail {
-  color: var(--bad);
-  font-weight: 600;
-}
-
-.notice {
-  padding: 0.6rem 0.9rem;
-  border-radius: 6px;
-  margin: 0.75rem 0;
-  border: 1px solid var(--border);
-}
-
-.notice.error {
-  border-color: var(--bad);
-  color: var(--bad);
-}
-
-.notice.success {
-  border-color: var(--ok);
-  color: var(--ok);
-}
-
-.notice.warn {
-  background: var(--warn-bg);
+.views a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
 }
 
 .pager {
   margin-top: 0.75rem;
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
+}
+
+/* ------------------------------------------------------------------ evals */
+
+.eval-list {
+  overflow-x: auto;
+  border-top: 1px solid var(--ink);
+  margin: 0.5rem 0;
+}
+
+.eval-list .inner {
+  min-width: 56rem;
+}
+
+.eval-row-grid {
+  display: grid;
+  grid-template-columns: 1rem 10.5rem 6rem minmax(8rem, 1fr) 4rem 4rem 8rem 5rem 6rem 6rem 5rem;
+  gap: 0 0.75rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+}
+
+.eval-head {
+  color: var(--steel);
+  font-size: var(--size-meta);
+  font-weight: 600;
+  border-bottom: 1px solid var(--rule);
+}
+
+.expander {
+  border-bottom: 1px solid var(--rule);
+}
+
+.expander > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.expander > summary::-webkit-details-marker {
+  display: none;
+}
+
+.expander.simple {
+  border-bottom: none;
+  border-top: 1px solid var(--rule);
+}
+
+.expander.simple > summary {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  font-weight: 600;
+}
+
+.expander.simple > summary::before {
+  align-self: center;
+  flex: none;
+}
+
+.eval-row-grid > span {
+  overflow-wrap: anywhere;
+}
+
+.eval-detail {
+  padding: 0.25rem 0 1rem 1.75rem;
+}
+
+.eval-detail table {
+  width: auto;
+  min-width: 30rem;
+}
+
+.eval-detail .kv {
+  max-width: 40rem;
+}
+
+/* ------------------------------------------------------------------ notices and forms */
+
+.notice {
+  max-width: var(--prose);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--steel);
+  border-radius: var(--radius-panel);
+  margin: 0.75rem 0;
+}
+
+.notice.error {
+  border-left-color: var(--brick);
+}
+
+.notice.success {
+  border-left-color: var(--intaglio);
+}
+
+.notice.warn {
+  border-left-color: var(--signal);
+}
+
+.notice ul {
+  margin: 0.25rem 0;
+  padding-left: 1.2rem;
 }
 
 form.decision fieldset {
@@ -217,67 +789,94 @@ form.decision fieldset {
   padding: 0;
   margin: 0 0 0.75rem;
   display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-form.decision fieldset.stacked {
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.75rem;
-  margin-top: 0.75rem;
+form.decision legend {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
 }
 
-form.decision fieldset.stacked label {
+form.decision details {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  padding: 0.4rem 0.6rem;
+  margin: 0.6rem 0;
+}
+
+form.decision details summary {
+  cursor: pointer;
+}
+
+form.decision details label {
   display: block;
   margin-top: 0.5rem;
+  font-size: var(--size-meta);
+  color: var(--steel);
+}
+
+form.decision > label {
+  display: block;
+  font-size: var(--size-meta);
+  color: var(--steel);
+  margin-bottom: 0.2rem;
 }
 
 form.decision select,
-form.decision input[type="number"] {
+form.decision input[type="number"],
+form.decision textarea {
   font: inherit;
-  padding: 0.3rem;
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.site-header nav {
-  display: flex;
-  gap: 1rem;
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--steel);
+  border-radius: var(--radius-panel);
 }
 
 form.decision textarea {
-  width: 100%;
-  min-height: 6rem;
-  font: inherit;
-  padding: 0.5rem;
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  min-height: 5rem;
 }
 
 button {
   font: inherit;
+  font-weight: 600;
   padding: 0.45rem 1.1rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--bg);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--intaglio);
+  background: var(--intaglio);
+  color: var(--paper);
   cursor: pointer;
-  margin-top: 0.5rem;
-}
-
-.claim {
-  border-left: 3px solid var(--accent);
-  padding-left: 0.75rem;
-  margin: 1rem 0;
+  margin-top: 0.75rem;
 }
 
 ul.plain {
-  padding-left: 1.2rem;
+  padding-left: 1.1rem;
   margin: 0.25rem 0;
+}
+
+.steps {
+  max-width: var(--prose);
+  padding-left: 1.25rem;
+}
+
+.steps li {
+  margin: 0 0 0.9rem;
+  padding-left: 0.25rem;
+}
+
+.steps li::marker {
+  color: var(--intaglio);
+  font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
 }

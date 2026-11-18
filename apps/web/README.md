@@ -4,8 +4,10 @@ The approval queue: a list of cases the agent has worked on, and a case page whe
 approves, approves with edits or rejects the agent's proposal. With "Approve with edits" the
 reviewer can change the recommendation, confidence, typology and narrative; the API runs the
 same deterministic checks as for the agent and refuses (listing the problems) if they fail. Any
-decision can also save a lesson ("correction") for future cases; lessons are listed on
-`/corrections` and are not read by the agent yet. The web app talks to the API from the server side
+decision can also save a lesson for future cases; lessons are listed on `/lessons` (old
+`/corrections` links redirect there) and are shown to the agent only on runs with lessons turned
+on. `/evals` lists recorded eval runs (counts and rates only) with expandable score blocks, and
+`/about` explains the flow in plain words. The web app talks to the API from the server side
 only, so the reviewer token never reaches the browser.
 
 ## Run locally
@@ -37,13 +39,13 @@ API_BASE_URL=http://localhost:8000 REVIEWER_TOKEN=local-dev-token WEB_DECISIONS_
 Without `WEB_DECISIONS_ENABLED=1` the case page shows "Decisions are disabled in this web
 deployment" and the decision action refuses before calling the API.
 
-When decisions are off, every page shows a "Demo in replay mode" banner. API requests time out
+When decisions are off, every page shows a "Replay mode" banner. API requests time out
 after 20 seconds; a timeout or connection failure shows "The API is waking up" (the free API host
 sleeps when idle). Hosted deployment steps are in docs/deploy.md.
 
 For a production build use `npm run build` and then `npm run start` with the same variables.
 
-3. Open http://localhost:3000/queue (lessons at http://localhost:3000/corrections).
+3. Open http://localhost:3000/queue (also /evals, /lessons and /about).
 
 The API needs migration 0004 (the corrections table) applied to its records database.
 
@@ -56,6 +58,12 @@ The API needs migration 0004 (the corrections table) applied to its records data
 | `WEB_DECISIONS_ENABLED` | web server | `1` turns the decision form on. Local only until a real reviewer login exists. Never set it, or REVIEWER_TOKEN, on a public deployment. |
 | `REVIEWER_NAME` | API | Name written to the audit log as `human:<name>` |
 | `API_ALLOW_REMOTE_DATABASE` | API | Set to `1` only on a deployed API whose databases are not local |
+
+## Design
+
+Tokens, type and layout follow docs/plans/ui-redesign.md: Archivo (variable width axis, through
+next/font) with condensed headings, light and dark schemes from `prefers-color-scheme`, and no
+client components (click to expand uses `<details>`).
 
 ## Checks
 
