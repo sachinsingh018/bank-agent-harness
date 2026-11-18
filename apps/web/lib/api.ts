@@ -9,6 +9,8 @@ export type QueueState = "waiting" | "decided" | "all";
 export type Decision = "approve" | "reject" | "approve_with_edits";
 export type DecisionEvent = "approved" | "rejected" | "edited";
 export type CorrectionKind = "recommendation" | "typology" | "confidence" | "evidence" | "other";
+/** The checker's verdict in maker-checker; "failed" when the checker did not finish. */
+export type ReviewState = "approve" | "reject" | "failed";
 
 export interface DecisionInfo {
   decision: Decision;
@@ -28,6 +30,7 @@ export interface QueueItem {
   typology: string | null;
   created_at: string;
   decision: DecisionInfo | null;
+  review_verdict: ReviewState | null;
 }
 
 export interface QueuePage {
@@ -111,6 +114,20 @@ export interface TransferRecord {
   format: string;
 }
 
+export interface ReviewOut {
+  verdict: ReviewState;
+  failure_reason: string | null;
+  review: Record<string, unknown> | null;
+  verifier_results: VerifierOut[];
+  usage: TotalsOut;
+  cost_usd: string;
+  tool_steps: number;
+  wall_ms: number;
+  model: ModelInfo;
+  prompt: PromptInfo;
+  created_at: string;
+}
+
 export interface RunDetail {
   run_id: string;
   case_id: string;
@@ -134,6 +151,7 @@ export interface RunDetail {
   missing_txn_ids: number[];
   not_fetched_txn_ids: number[];
   decision: DecisionInfo | null;
+  review: ReviewOut | null;
 }
 
 export interface FindingsEdits {

@@ -91,7 +91,11 @@ NOTES: tuple[str, ...] = (
     "n is below 100.",
     "Early alerts end on or before 2022-09-10 and are the headline. Late alerts sit in a window "
     "where normal traffic almost stops (decision 0006).",
+    "Review (maker-checker) compares the run with the same run as if the checker had not run: "
+    "a case the checker rejected or failed counts with the maker's own recommendation. It is "
+    "indicative on small sets.",
 )
+REVIEW_REASONS = ("reviewer_rejected", "reviewer_failed")
 
 _TXN_ERROR = re.compile(r"^txn (\d+):")
 _CLAIM_ERROR = re.compile(r"^claim (\d+):")
@@ -112,6 +116,7 @@ class Outcome:
     cost_usd: Decimal
     wall_ms: int
     tool_steps: int
+    review_verdict: str | None = None  # approve, reject, failed, or None when not reviewed
 
     @property
     def human_review(self) -> bool:
@@ -121,6 +126,14 @@ class Outcome:
     def escalated(self) -> bool:
         """Escalated with human review counted as escalated (a human looks at it)."""
         return self.human_review or self.recommendation == "escalate"
+
+    @property
+    def escalated_without_review(self) -> bool:
+        """escalated as if the checker had not run: a reviewer reason falls back to the
+        maker's own recommendation."""
+        if self.reason in REVIEW_REASONS:
+            return self.recommendation == "escalate"
+        return self.escalated
 
     @property
     def rank_score(self) -> float:
@@ -203,6 +216,7 @@ def outcome_from_result(result: CaseResult) -> Outcome:
         cost_usd=Decimal(result.cost_usd),
         wall_ms=result.wall_ms,
         tool_steps=result.tool_steps,
+        review_verdict=None if result.review is None else (result.review.verdict or "failed"),
     )
 
 
@@ -258,6 +272,54 @@ def _escalated(o: Outcome) -> bool:
 
 def _recommends_escalate(o: Outcome) -> bool:
     return o.recommendation == "escalate"
+
+
+def _escalated_without_review(o: Outcome) -> bool:
+    return o.escalated_without_review
+
+
+def _delta(after: float | None, before: float | None) -> float | None:
+    return None if after is None or before is None else round(after - before, 6)
+
+
+def review_metrics(pairs: Sequence[Pair]) -> dict[str, Any]:
+    """Reviewer reject rate and how the review changed precision and recall (strict truth,
+    human review counted as escalated). A rejected maker escalation that was a false positive
+    stays flagged for a human, so the review moves only rejected closes and failures on the
+    confusion matrix; the counts below show both."""
+    reviewed = [(o, t) for o, t in pairs if o.review_verdict is not None]
+    verdicts = Counter(str(o.review_verdict) for o, _ in reviewed)
+    rejected = [(o, t) for o, t in reviewed if o.review_verdict == "reject"]
+    with_review = confusion(pairs, _escalated, _strict)
+    without = confusion(pairs, _escalated_without_review, _strict)
+    return {
+        "reviewed": len(reviewed),
+        "approved": verdicts.get("approve", 0),
+        "rejected": verdicts.get("reject", 0),
+        "failed": verdicts.get("failed", 0),
+        "reject_rate": _ratio(verdicts.get("reject", 0), len(reviewed)),
+        "rejected_escalations": {
+            "true_positive": sum(
+                1 for o, t in rejected if o.recommendation == "escalate" and t.strict
+            ),
+            "false_positive": sum(
+                1 for o, t in rejected if o.recommendation == "escalate" and not t.strict
+            ),
+        },
+        "rejected_closes": {
+            "missed_positive": sum(
+                1 for o, t in rejected if o.recommendation == "close" and t.strict
+            ),
+            "true_negative": sum(
+                1 for o, t in rejected if o.recommendation == "close" and not t.strict
+            ),
+        },
+        "without_review": {"precision": without["precision"], "recall": without["recall"]},
+        "with_review": {"precision": with_review["precision"], "recall": with_review["recall"]},
+        "precision_change": _delta(with_review["precision"], without["precision"]),
+        "recall_change": _delta(with_review["recall"], without["recall"]),
+        "indicative": True,
+    }
 
 
 def baseline_metrics(pairs: Sequence[Pair]) -> dict[str, Any]:
@@ -436,6 +498,7 @@ def subset_metrics(
         "grounding": grounding_metrics(pairs),
         "calibration": calibration(pairs),
         "effort": effort_metrics(pairs),
+        "review": review_metrics(pairs),
     }
 
 
@@ -483,6 +546,7 @@ def _split_lines(name: str, m: Mapping[str, Any]) -> list[str]:
     fp = m["fp_reduction"]
     cal = m["calibration"]
     eff = m["effort"]
+    rev = m["review"]
     return [
         f"{name}: alerts {m['alerts']}, baseline precision "
         f"{_fmt(m['baseline']['precision_strict'])}",
@@ -498,6 +562,9 @@ def _split_lines(name: str, m: Mapping[str, Any]) -> list[str]:
         f"{' (indicative)' if cal['indicative'] else ''}",
         f"  cost per alert {eff['cost_per_alert_usd']}, latency ms {_fmt(eff['latency_ms_mean'])}, "
         f"tool steps mean {_fmt(eff['tool_steps_mean'])} max {eff['tool_steps_max']}",
+        f"  review: {rev['reviewed']} reviewed, reject rate {_fmt(rev['reject_rate'])}, "
+        f"precision change {_fmt(rev['precision_change'])}, recall change "
+        f"{_fmt(rev['recall_change'])} (indicative)",
     ]
 
 

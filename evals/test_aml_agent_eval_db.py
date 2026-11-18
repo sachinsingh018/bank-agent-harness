@@ -18,7 +18,14 @@ from evals import aml_agent_score, record_run, run_aml_agent
 from evals.aml_agent_score import Outcome, baseline_metrics, load_truths
 from harness import records
 from harness.db.models import Alert
-from harness.db.records_models import AgentRun, CaseEvent, EvalResult, EvalRun, ModelCall
+from harness.db.records_models import (
+    AgentReview,
+    AgentRun,
+    CaseEvent,
+    EvalResult,
+    EvalRun,
+    ModelCall,
+)
 from harness.records import verify_chain
 from modules.aml.load_txns import load_txns
 from modules.aml.rules.registry import run_all
@@ -116,6 +123,9 @@ def test_runner_and_scorer_end_to_end(
     assert {r["case_id"] for r in results} == set(eval_alert_ids[:3])
     assert [r["status"] for r in results] == ["proposed"] * 3, [r["reason"] for r in results]
     assert all(r["trace"]["model_calls"] and r["tool_steps"] >= 1 for r in results)
+    # Maker-checker is on by default: the scripted checker approved every proposal.
+    assert [r["review"]["verdict"] for r in results] == ["approve"] * 3
+    assert all(r["review_required"] for r in results)
 
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["run_id"] == run_dir.name
@@ -137,7 +147,11 @@ def test_runner_and_scorer_end_to_end(
     assert manifest["dataset"]["ruleset_version"] == EVAL_VERSION
     assert len(manifest["dataset"]["sha256"]) == 64
     assert manifest["counts"]["total"] == 3
+    assert manifest["counts"]["by_review_verdict"] == {"approve": 3}
     assert manifest["total_cost_usd"] == "0"
+    review = manifest["review"]
+    assert review["enabled"] is True and review["model"]["profile"] == "scripted"
+    assert review["prompt"]["version"] == "v1" and review["limits"]["max_tool_steps"] == 6
 
     code = aml_agent_score.main(["--run", str(run_dir)])
     stdout = capfd.readouterr().out
@@ -158,9 +172,45 @@ def test_runner_and_scorer_end_to_end(
         "grounding",
         "calibration",
         "effort",
+        "review",
     }
+    assert every["review"]["reviewed"] == 3 and every["review"]["reject_rate"] == 0.0
     for alert_id in eval_alert_ids[:3]:
         assert alert_id not in json.dumps(report)
+
+
+def test_no_review_runs_the_maker_only(
+    eval_alert_ids: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            {
+                "alert_ids": eval_alert_ids[:1],
+                "created_by": "test",
+                "dataset": "test",
+                "ruleset_version": EVAL_VERSION,
+                "split_seed": 42,
+                "version": "v0",
+            }
+        )
+    )
+    monkeypatch.setenv("DATABASE_URL", local_url())
+    code = run_aml_agent.main(
+        ["--dataset", str(dataset), "--profile", "scripted", "--out-dir", str(tmp_path / "r")]
+        + ["--no-review"]
+    )
+    stdout = capfd.readouterr().out
+    assert code == 0, stdout
+    run_dir = Path(stdout.strip().splitlines()[-1].removeprefix("run_dir="))
+    (result,) = [json.loads(line) for line in (run_dir / "results.jsonl").read_text().splitlines()]
+    assert result["status"] == "proposed"
+    assert result["review"] is None and result["review_required"] is False
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["review"] == {"enabled": False}
 
 
 def test_runner_and_scorer_record_end_to_end(
@@ -234,7 +284,13 @@ def test_runner_and_scorer_record_end_to_end(
             assert calls >= 3
             events = conn.execute(select(CaseEvent).where(CaseEvent.run_id.in_(run_ids))).all()
             assert len(events) == 3
-            assert verify_chain(conn).ok
+            assert all("review_digest" in e.payload for e in events)
+            reviews = conn.execute(
+                select(func.count()).where(AgentReview.run_id.in_(run_ids))
+            ).scalar_one()
+            assert reviews == 3
+            report = verify_chain(conn, check_runs=True)
+            assert report.ok and report.reviews_checked >= 3
 
         code = aml_agent_score.main(["--run", str(run_dir), "--record"])
         stdout = capfd.readouterr().out
@@ -344,6 +400,10 @@ def test_record_run_copies_a_run_dir_into_the_records_tables(
             assert calls >= 2
             events = conn.execute(select(CaseEvent).where(CaseEvent.run_id.in_(run_ids))).all()
             assert len(events) == 2
+            copied = conn.execute(
+                select(AgentReview.verdict).where(AgentReview.run_id.in_(run_ids))
+            ).scalars()
+            assert list(copied) == ["approve", "approve"]
             stored = conn.execute(
                 select(EvalResult).where(EvalResult.eval_run_id == eval_run_id)
             ).one()

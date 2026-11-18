@@ -15,9 +15,15 @@ agent_runs row and its model_calls rows (in id order, without the id). verify_ch
 check_runs=True recomputes it from the current rows, so an edited run record shows up even
 though the run tables are outside the chain. Known limits are in docs/decisions/0007.
 
+A run the checker reviewed (maker-checker) also has one agent_reviews row, written in the same
+transaction, and its event carries review_digest: the sha256 of the canonical JSON of that row.
+verify_chain checks it the same way. Runs without a review have no review_digest, so runs
+recorded before reviews existed verify exactly as before.
+
 CLI (from the repo root):
     uv run python -m harness.records verify [--allow-remote] [--skip-run-digests]
-prints "chain ok, N rows, M run digests checked" or exits non-zero. The URL is never printed.
+prints "chain ok, N rows, M run digests checked, K review digests checked" or exits
+non-zero. The URL is never printed.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from harness.db.records_models import (
     AGENT_RUNNER_ACTOR,
+    AgentReview,
     AgentRun,
     CaseEvent,
     EvalResult,
@@ -69,7 +76,9 @@ class ChainReport(BaseModel):
     rows: int
     first_bad_id: int | None
     runs_checked: int = 0
-    run_mismatch_ids: list[int] = []  # case_events ids whose run records no longer match
+    reviews_checked: int = 0
+    # case_events ids whose run records (or review record) no longer match
+    run_mismatch_ids: list[int] = []
 
 
 # ---------------------------------------------------------------------------------------------
@@ -121,6 +130,11 @@ def run_digest(run: Mapping[str, Any], calls: Sequence[Mapping[str, Any]]) -> st
     money at the stored scale)."""
     body = {"agent_run": _digest_row(run), "model_calls": [_digest_row(c) for c in calls]}
     return hashlib.sha256(canonical_json(body).encode("ascii")).hexdigest()
+
+
+def review_digest(review: Mapping[str, Any]) -> str:
+    """sha256 of the full agent_reviews row (money at the stored scale)."""
+    return hashlib.sha256(canonical_json(_digest_row(review)).encode("ascii")).hexdigest()
 
 
 def event_hash(
@@ -216,11 +230,18 @@ def current_run_digest(conn: Connection, run_id: str) -> str | None:
     return run_digest(dict(run._mapping), [dict(c._mapping) for c in calls])
 
 
+def current_review_digest(conn: Connection, run_id: str) -> str | None:
+    """review_digest recomputed from the stored row, or None when the review row is missing."""
+    row = conn.execute(select(AgentReview.__table__).where(AgentReview.run_id == run_id)).first()
+    return None if row is None else review_digest(dict(row._mapping))
+
+
 def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
     """Recompute every hash in id order. first_bad_id is the first row whose prev_hash or
     hash does not match. Removing rows at the very end cannot be seen by a chain alone.
     With check_runs, every event that carries a run_digest is also compared with its current
-    agent_runs and model_calls rows; mismatching event ids are listed."""
+    agent_runs and model_calls rows, and every event that carries a review_digest with its
+    agent_reviews row; mismatching event ids are listed."""
     rows = conn.execute(
         select(
             CaseEvent.id,
@@ -239,6 +260,7 @@ def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
     expected_prev: str | None = None
     count = 0
     digests: list[tuple[int, str | None, Any]] = []
+    review_digests: list[tuple[int, str | None, Any]] = []
     for row in rows:
         count += 1
         recomputed = event_hash(
@@ -250,22 +272,31 @@ def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
         expected_prev = row.hash
         if isinstance(row.payload, dict) and "run_digest" in row.payload:
             digests.append((row.id, row.run_id, row.payload["run_digest"]))
-    mismatches: list[int] = []
+        if isinstance(row.payload, dict) and "review_digest" in row.payload:
+            review_digests.append((row.id, row.run_id, row.payload["review_digest"]))
+    mismatches: set[int] = set()
     if check_runs:
         for event_id, run_id, stored in digests:
             current = None if run_id is None else current_run_digest(conn, run_id)
             if current is None or current != stored:
-                mismatches.append(event_id)
+                mismatches.add(event_id)
+        for event_id, run_id, stored in review_digests:
+            current = None if run_id is None else current_review_digest(conn, run_id)
+            if current is None or current != stored:
+                mismatches.add(event_id)
     return ChainReport(
         ok=not mismatches,
         rows=count,
         first_bad_id=None,
         runs_checked=len(digests) if check_runs else 0,
-        run_mismatch_ids=mismatches,
+        reviews_checked=len(review_digests) if check_runs else 0,
+        run_mismatch_ids=sorted(mismatches),
     )
 
 
-def _event_payload(result: CaseResult, run_id: str, digest: str) -> dict[str, Any]:
+def _event_payload(
+    result: CaseResult, run_id: str, digest: str, review: Mapping[str, Any] | None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": result.status,
         "reason": result.reason,
@@ -275,7 +306,33 @@ def _event_payload(result: CaseResult, run_id: str, digest: str) -> dict[str, An
     if result.findings is not None:
         for key in ("recommendation", "typology", "confidence"):
             payload[key] = result.findings.get(key)
+    if review is not None:
+        payload["review_verdict"] = review["verdict"]
+        payload["review_digest"] = review_digest(review)
     return payload
+
+
+def _review_row(result: CaseResult, run_id: str) -> dict[str, Any] | None:
+    review = result.review
+    if review is None:
+        return None
+    return {
+        "run_id": run_id,
+        "verdict": review.verdict,
+        "failure_reason": review.failure_reason,
+        "review": None if review.review is None else _jsonable(review.review),
+        "verifier_results": _jsonable([v.model_dump() for v in review.verifier_results]),
+        "usage": _jsonable(review.totals.model_dump()),
+        "cost_usd": usd(review.cost_usd),
+        "tool_steps": review.tool_steps,
+        "wall_ms": review.wall_ms,
+        "profile": review.profile,
+        "provider": review.provider,
+        "model": review.model,
+        "prompt_version": review.prompt_version,
+        "prompt_sha256": review.prompt_sha256,
+        "created_at": datetime.now(UTC),
+    }
 
 
 def record_case_result(
@@ -287,9 +344,10 @@ def record_case_result(
     eval_run_id: str | None = None,
     trace_path: str | None = None,
 ) -> str:
-    """Write agent_runs, model_calls and one case event in one transaction. Returns run_id.
-    The rows are written once and never updated (triggers refuse it); the event carries their
-    run_digest."""
+    """Write agent_runs, model_calls, the checker's agent_reviews row (when the run was
+    reviewed) and one case event in one transaction. Returns run_id. The rows are written once
+    and never updated (triggers refuse it); the event carries their run_digest and, for a
+    reviewed run, the review_digest."""
     run_id = str(uuid.uuid4())
     event = "proposal_created" if result.status == "proposed" else "human_review_created"
     run: dict[str, Any] = {
@@ -333,13 +391,16 @@ def record_case_result(
         ]
         if calls:
             conn.execute(insert(ModelCall), calls)
+        review = _review_row(result, run_id)
+        if review is not None:
+            conn.execute(insert(AgentReview).values(**review))
         append_case_event(
             conn,
             actor=AGENT_RUNNER_ACTOR,
             event=event,
             case_id=result.case_id,
             run_id=run_id,
-            payload=_event_payload(result, run_id, run_digest(run, calls)),
+            payload=_event_payload(result, run_id, run_digest(run, calls), review),
         )
     return run_id
 
@@ -472,7 +533,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if report.first_bad_id is not None:
         print(f"chain broken at id {report.first_bad_id}, {report.rows} rows checked")
         return 1
-    print(f"chain ok, {report.rows} rows, {report.runs_checked} run digests checked")
+    print(
+        f"chain ok, {report.rows} rows, {report.runs_checked} run digests checked, "
+        f"{report.reviews_checked} review digests checked"
+    )
     if report.run_mismatch_ids:
         print(f"run records changed for case_events ids: {report.run_mismatch_ids}")
         return 1

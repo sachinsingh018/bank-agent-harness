@@ -35,6 +35,7 @@ CASE_EVENT_TYPES = ("proposal_created", "human_review_created", "approved", "rej
 _EVENT_LIST = ", ".join(f"'{e}'" for e in CASE_EVENT_TYPES)
 AGENT_RUNNER_ACTOR = "agent-runner"
 RUN_STATUSES = ("proposed", "human_review")
+REVIEW_VERDICTS = ("approve", "reject")
 CORRECTION_KINDS = ("recommendation", "typology", "confidence", "evidence", "other")
 
 
@@ -121,6 +122,38 @@ class ModelCall(Base):
     latency_ms: Mapped[int] = mapped_column(Integer)
     stop_reason: Mapped[str] = mapped_column(Text)
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AgentReview(Base):
+    """The checker's review of one agent run (maker-checker). Append-only (a trigger refuses
+    UPDATE, DELETE and TRUNCATE). A separate table, so the run digests of runs recorded before
+    reviews existed stay valid; the case event of the run carries review_digest instead."""
+
+    __tablename__ = "agent_reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "verdict IS NULL OR verdict IN ('approve', 'reject')", name="verdict_valid"
+        ),
+        CheckConstraint("(verdict IS NULL) <> (failure_reason IS NULL)", name="verdict_or_failure"),
+    )
+
+    run_id: Mapped[str] = mapped_column(Text, ForeignKey("agent_runs.run_id"), primary_key=True)
+    verdict: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    verifier_results: Mapped[list[Any]] = mapped_column(JSONB)
+    usage: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    cost_usd: Mapped[Decimal] = mapped_column(USD)
+    tool_steps: Mapped[int] = mapped_column(Integer)
+    wall_ms: Mapped[int] = mapped_column(Integer)
+    profile: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    prompt_sha256: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
 
 
 class CaseEvent(Base):

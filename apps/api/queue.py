@@ -5,7 +5,8 @@ connection; cited transfers are read through the guarded tool door (get_transact
 only writes are one decision event (approved, rejected or edited) in the append-only audit
 log, through harness.records.append_case_event, plus an optional correction in the same
 transaction, and only when the server has a reviewer configured. Edited findings must pass the
-module's output model and deterministic verifiers first (apps/api/edits.py).
+module's output model and deterministic verifiers first (apps/api/edits.py). Run detail and
+the queue also show the checker's review (maker-checker) from agent_reviews, read only.
 Errors are generic and never carry database details.
 """
 
@@ -34,7 +35,7 @@ from apps.api.deps import (
     valid_reviewer_name,
 )
 from apps.api.edits import FindingsEdits, check_edits
-from harness.db.records_models import AgentRun, CaseEvent, Correction, ModelCall
+from harness.db.records_models import AgentReview, AgentRun, CaseEvent, Correction, ModelCall
 from harness.db.session import DatabaseConnectionError
 from harness.records import CASE_EVENTS_LOCK_KEY, append_case_event
 from tools.aml.db import open_readonly
@@ -65,6 +66,7 @@ DB_ERROR = "database error"
 RUN_NOT_FOUND = "run not found"
 
 QueueState = Literal["waiting", "decided", "all"]
+ReviewState = Literal["approve", "reject", "failed"]
 
 
 class _Out(BaseModel):
@@ -92,6 +94,7 @@ class QueueItem(_Out):
     typology: str | None
     created_at: datetime
     decision: DecisionInfo | None
+    review_verdict: ReviewState | None  # None when the checker did not run
 
 
 class QueuePage(_Out):
@@ -155,6 +158,22 @@ class EventOut(_Out):
     payload: dict[str, Any]
 
 
+class ReviewOut(_Out):
+    """The checker's review of the run (maker-checker)."""
+
+    verdict: ReviewState
+    failure_reason: str | None
+    review: dict[str, Any] | None
+    verifier_results: list[VerifierOut]
+    usage: TotalsOut
+    cost_usd: str
+    tool_steps: int
+    wall_ms: int
+    model: ModelInfo
+    prompt: PromptInfo
+    created_at: datetime
+
+
 class RunDetail(_Out):
     run_id: str
     case_id: str
@@ -178,6 +197,7 @@ class RunDetail(_Out):
     missing_txn_ids: list[int]
     not_fetched_txn_ids: list[int]  # cited, but over the lookup cap
     decision: DecisionInfo | None
+    review: ReviewOut | None  # None when the checker did not run
 
 
 class DecisionRequest(BaseModel):
@@ -291,6 +311,37 @@ def _first_decisions() -> Any:
     )
 
 
+def review_state(verdict: str | None, present: bool) -> ReviewState | None:
+    """approve or reject, failed for a review row without a verdict, None for no review."""
+    if not present:
+        return None
+    if verdict == "approve":
+        return "approve"
+    if verdict == "reject":
+        return "reject"
+    return "failed"
+
+
+def _review_out(row: Any) -> ReviewOut | None:
+    if row is None:
+        return None
+    state = review_state(row.verdict, True)
+    assert state is not None
+    return ReviewOut(
+        verdict=state,
+        failure_reason=row.failure_reason,
+        review=row.review,
+        verifier_results=[VerifierOut.model_validate(v) for v in row.verifier_results],
+        usage=TotalsOut.model_validate(row.usage),
+        cost_usd=format(row.cost_usd, "f"),
+        tool_steps=row.tool_steps,
+        wall_ms=row.wall_ms,
+        model=ModelInfo(profile=row.profile, provider=row.provider, model=row.model),
+        prompt=PromptInfo(version=row.prompt_version, sha256=row.prompt_sha256),
+        created_at=row.created_at,
+    )
+
+
 def _finding(findings: Any, key: str) -> Any:
     return findings.get(key) if isinstance(findings, dict) else None
 
@@ -392,7 +443,12 @@ def list_queue(
         decided.c.actor,
         decided.c.at,
         decided.c.payload,
-    ).outerjoin(decided, decided.c.run_id == AgentRun.run_id)
+        AgentReview.run_id.label("review_run_id"),
+        AgentReview.verdict.label("review_verdict"),
+    )
+    stmt = stmt.outerjoin(decided, decided.c.run_id == AgentRun.run_id).outerjoin(
+        AgentReview, AgentReview.run_id == AgentRun.run_id
+    )
     if state == "waiting":
         stmt = stmt.where(decided.c.event.is_(None))
     elif state == "decided":
@@ -418,6 +474,7 @@ def list_queue(
             typology=_finding(r.findings, "typology"),
             created_at=r.created_at,
             decision=_decision_info(r.event, r.actor, r.at, r.payload),
+            review_verdict=review_state(r.review_verdict, r.review_run_id is not None),
         )
         for r in rows[:limit]
     ]
@@ -453,18 +510,21 @@ def _transfers(engine: Engine, txn_ids: list[int]) -> tuple[list[TransferRecord]
 
 @router.get("/runs/{run_id}", response_model=RunDetail)
 def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunDetail:
-    def work() -> tuple[Any, list[Any], list[Any]]:
+    def work() -> tuple[Any, list[Any], list[Any], Any]:
         with engine.connect() as conn:
             run = _load_run(conn, run_id)
+            review = conn.execute(
+                select(AgentReview.__table__).where(AgentReview.run_id == run_id)
+            ).first()
             calls = conn.execute(
                 select(ModelCall.__table__).where(ModelCall.run_id == run_id).order_by(ModelCall.id)
             ).all()
             events = conn.execute(
                 select(CaseEvent.__table__).where(CaseEvent.run_id == run_id).order_by(CaseEvent.id)
             ).all()
-            return run, list(calls), list(events)
+            return run, list(calls), list(events), review
 
-    run, calls, events = _safely(work)
+    run, calls, events, review = _safely(work)
     cited = cited_txn_ids(run.findings)
     fetch, not_fetched = cited[:MAX_CITED_LOOKUPS], cited[MAX_CITED_LOOKUPS:]
     transfers, missing = _safely(lambda: _transfers(tool_engine, fetch))
@@ -507,6 +567,7 @@ def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunD
         decision=None
         if decision is None
         else _decision_info(decision.event, decision.actor, decision.at, decision.payload),
+        review=_review_out(review),
     )
 
 

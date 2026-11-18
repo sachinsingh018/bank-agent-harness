@@ -134,3 +134,38 @@ def submit_findings_tool_spec() -> ToolSpec:
         description=SUBMIT_TOOL_DESCRIPTION,
         input_schema=portable_schema(AmlFindings.model_json_schema()),
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# The checker's answer in maker-checker (docs/plans/maker-checker.md).
+# ---------------------------------------------------------------------------------------------
+
+REVIEW_TOOL_NAME = "submit_review"
+REVIEW_TOOL_DESCRIPTION = (
+    "Submit your review of the findings. Calling this tool ends the review, so call it exactly "
+    "once. Approve only if the findings would hold up; otherwise reject with specific reasons."
+)
+ShortText = Annotated[str, Field(min_length=1, max_length=300)]
+
+
+class ReviewConcern(_Strict):
+    """One problem with the findings, tied to a claim when it is about one."""
+
+    claim_index: Annotated[int, Field(ge=0)] | None = None  # 0-based index into findings.claims
+    issue: ShortText
+
+
+class AmlReview(_Strict):
+    verdict: Literal["approve", "reject"]
+    reasons: Annotated[list[ShortText], Field(min_length=1, max_length=5)]
+    concerns: Annotated[list[ReviewConcern], Field(max_length=5)] = []
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]  # how sure the checker is of its verdict
+
+
+def submit_review_tool_spec() -> ToolSpec:
+    """The checker's final-answer tool. Its input schema is AmlReview."""
+    return ToolSpec(
+        name=REVIEW_TOOL_NAME,
+        description=REVIEW_TOOL_DESCRIPTION,
+        input_schema=portable_schema(AmlReview.model_json_schema()),
+    )

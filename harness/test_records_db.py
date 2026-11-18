@@ -17,11 +17,11 @@ from typing import Any
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Connection, Engine, func, select, text
+from sqlalchemy import Connection, Engine, func, insert, select, text
 from sqlalchemy.exc import DBAPIError
 
 from harness import records
-from harness.db.records_models import AgentRun, CaseEvent, ModelCall
+from harness.db.records_models import AgentReview, AgentRun, CaseEvent, ModelCall
 from harness.models.config import get_profile
 from harness.models.types import Usage
 from harness.prompts import load_prompt
@@ -31,7 +31,8 @@ from harness.records import (
     record_case_result,
     verify_chain,
 )
-from harness.trace import CaseResult, ModelCallRecord, RunTrace
+from harness.review import apply_review
+from harness.trace import CaseResult, ModelCallRecord, ReviewOutcome, RunTrace
 from harness.verifiers.base import VerifierResult
 from modules.aml.agent.spec import AML_SPEC
 from tests_support.records_db import records_cleaned
@@ -94,6 +95,7 @@ def test_migration_down_and_up_again(harness_engine: Engine) -> None:
             assert func_count == 0
             command.upgrade(_alembic(conn), "head")
             assert set(TABLES) <= _tables(conn)
+            assert "agent_reviews" in _tables(conn)  # 0005
             assert _triggers(conn) == TRIGGERS
             # An empty audit log downgrades without the flag.
             command.downgrade(_alembic(conn), "0002")
@@ -455,5 +457,151 @@ def test_run_digest_finds_edited_run_records(harness_engine: Engine, tamper: str
             report = verify_chain(conn, check_runs=True)
             assert not report.ok and report.first_bad_id is None
             assert report.run_mismatch_ids == [event_id]
+        finally:
+            trans.rollback()
+
+
+def _reviewed(case_id: str, verdict: str | None) -> CaseResult:
+    review = ReviewOutcome(
+        verdict=verdict,  # type: ignore[arg-type]
+        failure_reason=None if verdict is not None else "limit_steps",
+        review=None
+        if verdict is None
+        else {"verdict": verdict, "reasons": ["Checked."], "concerns": [], "confidence": 0.6},
+        verifier_results=[VerifierResult(name="review_claim_index", passed=True, errors=[])],
+        profile="scripted",
+        provider="scripted",
+        model="scripted",
+        prompt_version="v1",
+        prompt_sha256="1" * 64,
+        totals=Usage(input_tokens=50, output_tokens=5),
+        cost_usd="0.0001234",
+        tool_steps=1,
+        wall_ms=300,
+        trace=_trace(case_id, 1),
+    )
+    return apply_review(_proposed(case_id), review, required=True)
+
+
+def test_reviewed_runs_write_a_review_row_and_digest(harness_engine: Engine, clean: None) -> None:
+    profile = get_profile("scripted")
+    prompt = load_prompt(AML_SPEC.prompt)
+    approved = _reviewed(f"T-{uuid.uuid4()}", "approve")
+    rejected = _reviewed(f"T-{uuid.uuid4()}", "reject")
+    failed = _reviewed(f"T-{uuid.uuid4()}", None)
+    with harness_engine.connect() as conn:
+        ids = [
+            record_case_result(conn, r, profile=profile, prompt=prompt)
+            for r in (approved, rejected, failed)
+        ]
+    with harness_engine.connect() as conn:
+        rows = {
+            r.run_id: r
+            for r in conn.execute(select(AgentReview).where(AgentReview.run_id.in_(ids))).all()
+        }
+        assert [rows[i].verdict for i in ids] == ["approve", "reject", None]
+        assert rows[ids[2]].failure_reason == "limit_steps" and rows[ids[2]].review is None
+        assert rows[ids[0]].cost_usd == Decimal("0.000123") and rows[ids[0]].tool_steps == 1
+        assert rows[ids[0]].usage["input_tokens"] == 50
+        runs = {r.run_id: r for r in conn.execute(select(AgentRun).where(AgentRun.run_id.in_(ids)))}
+        assert [runs[i].status for i in ids] == ["proposed", "human_review", "human_review"]
+        assert runs[ids[1]].reason == "reviewer_rejected"
+        assert runs[ids[0]].totals["input_tokens"] == 251  # maker plus checker
+        events = {
+            e.run_id: e for e in conn.execute(select(CaseEvent).where(CaseEvent.run_id.in_(ids)))
+        }
+        assert events[ids[0]].event == "proposal_created"
+        assert events[ids[1]].event == "human_review_created"
+        for run_id in ids:
+            payload = events[run_id].payload
+            assert payload["review_digest"] == records.current_review_digest(conn, run_id)
+            assert payload["run_digest"] == records.current_run_digest(conn, run_id)
+        assert events[ids[2]].payload["review_verdict"] is None
+        report = verify_chain(conn, check_runs=True)
+        assert report.ok and report.reviews_checked >= 3
+
+
+def test_review_rows_are_append_only_and_tampering_is_found(harness_engine: Engine) -> None:
+    profile = get_profile("scripted")
+    prompt = load_prompt(AML_SPEC.prompt)
+    with harness_engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            run_id = record_case_result(
+                conn, _reviewed(f"T-{uuid.uuid4()}", "approve"), profile=profile, prompt=prompt
+            )
+            for sql in (
+                "UPDATE agent_reviews SET verdict = 'reject' WHERE run_id = :r",
+                "DELETE FROM agent_reviews WHERE run_id = :r",
+                "TRUNCATE agent_reviews",
+            ):
+                with pytest.raises(DBAPIError, match="append-only"):
+                    with conn.begin_nested():
+                        conn.execute(text(sql), {"r": run_id})
+            event_id = conn.execute(
+                select(CaseEvent.id).where(CaseEvent.run_id == run_id)
+            ).scalar_one()
+            assert verify_chain(conn, check_runs=True).ok
+            conn.execute(text("ALTER TABLE agent_reviews DISABLE TRIGGER USER"))
+            conn.execute(
+                text("UPDATE agent_reviews SET verdict = 'reject' WHERE run_id = :r"),
+                {"r": run_id},
+            )
+            conn.execute(text("ALTER TABLE agent_reviews ENABLE TRIGGER USER"))
+            assert verify_chain(conn).ok  # the chain itself is intact
+            report = verify_chain(conn, check_runs=True)
+            assert not report.ok and report.run_mismatch_ids == [event_id]
+        finally:
+            trans.rollback()
+
+
+def test_a_run_recorded_before_reviews_still_verifies(harness_engine: Engine) -> None:
+    """Rows and event written exactly as the recorder did before maker-checker: no
+    agent_reviews row and no review_digest in the payload. The run digest must not change."""
+    run_id = str(uuid.uuid4())
+    case_id = f"T-{uuid.uuid4()}"
+    run: dict[str, Any] = {
+        "run_id": run_id,
+        "case_id": case_id,
+        "module": "aml",
+        "status": "human_review",
+        "reason": "limit_steps",
+        "findings": None,
+        "verifier_results": [],
+        "totals": {"input_tokens": 1, "output_tokens": 1},
+        "cost_usd": Decimal("0.000001"),
+        "tool_steps": 12,
+        "wall_ms": 5,
+        "prompt_version": "v2",
+        "prompt_sha256": "2" * 64,
+        "profile": "scripted",
+        "provider": "scripted",
+        "model": "scripted",
+        "eval_run_id": None,
+        "trace_path": None,
+        "created_at": datetime(2026, 11, 16, 1, 2, 3, 456789, tzinfo=UTC),
+    }
+    with harness_engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            conn.execute(insert(AgentRun).values(**run))
+            payload = {
+                "status": "human_review",
+                "reason": "limit_steps",
+                "run_id": run_id,
+                "run_digest": records.run_digest(run, []),
+            }
+            append_case_event(
+                conn,
+                actor="agent-runner",
+                event="human_review_created",
+                case_id=case_id,
+                run_id=run_id,
+                payload=payload,
+            )
+            assert records.current_run_digest(conn, run_id) == payload["run_digest"]
+            assert records.current_review_digest(conn, run_id) is None
+            report = verify_chain(conn, check_runs=True)
+            assert report.ok and report.run_mismatch_ids == []
         finally:
             trans.rollback()

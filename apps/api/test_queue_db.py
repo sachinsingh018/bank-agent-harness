@@ -30,7 +30,8 @@ from harness.models.config import get_profile
 from harness.models.types import Usage
 from harness.prompts import load_prompt
 from harness.records import record_case_result, verify_chain
-from harness.trace import CaseResult, ModelCallRecord, RunTrace
+from harness.review import apply_review
+from harness.trace import CaseResult, ModelCallRecord, ReviewOutcome, RunTrace
 from harness.verifiers.base import VerifierResult
 from modules.aml.agent.spec import AML_SPEC
 from tests_support.aml_db import local_url
@@ -680,3 +681,53 @@ def test_corrections_list_pages_and_corrections_are_append_only(
         with pytest.raises(DBAPIError, match="append-only"):
             with records_engine.begin() as conn:
                 conn.execute(text(statement), {"id": ids[0]})
+
+
+def _rejected_by_checker(case_id: str, txns: list[Txn]) -> CaseResult:
+    review = ReviewOutcome(
+        verdict="reject",
+        failure_reason=None,
+        review={
+            "verdict": "reject",
+            "reasons": ["The ordinary explanation is not ruled out."],
+            "concerns": [{"claim_index": 0, "issue": "Overstated."}],
+            "confidence": 0.7,
+        },
+        verifier_results=[VerifierResult(name="review_claim_index", passed=True, errors=[])],
+        profile="scripted",
+        provider="scripted",
+        model="scripted",
+        prompt_version="v1",
+        prompt_sha256="1" * 64,
+        totals=Usage(input_tokens=40, output_tokens=4),
+        cost_usd="0",
+        tool_steps=0,
+        wall_ms=10,
+        trace=_trace(case_id),
+    )
+    return apply_review(_proposed(case_id, txns, "escalate"), review, required=True)
+
+
+def test_detail_and_queue_show_the_checker_review(
+    client: TestClient, runs: Runs, records_engine: Engine
+) -> None:
+    with records_engine.connect() as conn:
+        run_id = record_case_result(
+            conn,
+            _rejected_by_checker(f"T-{uuid.uuid4()}", runs.txns),
+            profile=get_profile("scripted"),
+            prompt=load_prompt(AML_SPEC.prompt),
+        )
+    body = client.get(f"/runs/{run_id}").json()
+    assert (body["status"], body["reason"]) == ("human_review", "reviewer_rejected")
+    review = body["review"]
+    assert review["verdict"] == "reject" and review["failure_reason"] is None
+    assert review["review"]["concerns"] == [{"claim_index": 0, "issue": "Overstated."}]
+    assert review["usage"]["input_tokens"] == 40 and review["prompt"]["version"] == "v1"
+    assert review["model"]["profile"] == "scripted"
+    assert client.get(f"/runs/{runs.escalate}").json()["review"] is None
+
+    items = client.get("/queue", params={"limit": 100}).json()["items"]
+    by_id = {i["run_id"]: i for i in items}
+    assert by_id[run_id]["review_verdict"] == "reject"
+    assert by_id[runs.escalate]["review_verdict"] is None

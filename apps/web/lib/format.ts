@@ -17,6 +17,14 @@ export function formatStatus(status: string, reason: string | null): string {
   return status;
 }
 
+/** The checker's verdict for display; empty when the checker did not run. */
+export function reviewLabel(verdict: string | null): string {
+  if (verdict === "approve") return "approved";
+  if (verdict === "reject") return "rejected";
+  if (verdict === "failed") return "failed";
+  return "";
+}
+
 export interface CitedAmount {
   txn_id: number;
   side: string;

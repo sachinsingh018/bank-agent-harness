@@ -8,12 +8,13 @@ and never contain stored values. Plan: docs/plans/agent-loop.md section 7.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel
 
 from harness.verifiers.base import VerifierResult, VerifyContext
 from modules.aml.agent.lookup import AmlLookupLike
-from modules.aml.agent.models import AmlFindings
+from modules.aml.agent.models import AmlFindings, AmlReview
 
 
 def _findings(output: BaseModel) -> AmlFindings:
@@ -144,3 +145,28 @@ class AlertMembershipVerifier:
         ):
             errors.append("escalate needs at least one claim citing a transfer in the alert")
         return _result(self.name, errors)
+
+
+class ReviewClaimIndexVerifier:
+    """Every claim_index in a review points at a claim that exists in the maker's findings."""
+
+    name = "review_claim_index"
+
+    def __init__(self, findings: dict[str, Any]) -> None:
+        claims = findings.get("claims")
+        self.claim_count = len(claims) if isinstance(claims, list) else 0
+
+    def check(self, output: BaseModel, ctx: VerifyContext) -> VerifierResult:
+        if not isinstance(output, AmlReview):
+            raise TypeError("expected AmlReview")
+        errors = [
+            f"concern {i}: claim_index {c.claim_index} does not exist (the findings have "
+            f"{self.claim_count} claims, numbered from 0)"
+            for i, c in enumerate(output.concerns)
+            if c.claim_index is not None and c.claim_index >= self.claim_count
+        ]
+        return _result(self.name, errors)
+
+
+def review_verifiers(findings: dict[str, Any]) -> list[ReviewClaimIndexVerifier]:
+    return [ReviewClaimIndexVerifier(findings)]

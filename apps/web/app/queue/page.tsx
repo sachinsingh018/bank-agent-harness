@@ -1,7 +1,13 @@
 import Link from "next/link";
 
 import { API_WAKING_MESSAGE, ApiError, getQueue, type QueuePage, type QueueState } from "../../lib/api";
-import { decisionLabel, formatConfidence, formatStatus, formatTime } from "../../lib/format";
+import {
+  decisionLabel,
+  formatConfidence,
+  formatStatus,
+  formatTime,
+  reviewLabel,
+} from "../../lib/format";
 
 const TABS: { state: QueueState; label: string }[] = [
   { state: "waiting", label: "Waiting" },
@@ -78,6 +84,7 @@ export default async function QueuePageView({
                 <th>Recommendation</th>
                 <th className="num">Confidence</th>
                 <th>Typology</th>
+                <th>Reviewer</th>
                 <th>Created</th>
                 <th>Decision</th>
               </tr>
@@ -94,6 +101,7 @@ export default async function QueuePageView({
                   <td>{item.recommendation ?? ""}</td>
                   <td className="num">{formatConfidence(item.confidence)}</td>
                   <td>{item.typology ?? ""}</td>
+                  <td>{reviewLabel(item.review_verdict)}</td>
                   <td>{formatTime(item.created_at)}</td>
                   <td>
                     {item.decision

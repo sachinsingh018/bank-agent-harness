@@ -5,6 +5,9 @@ alert id taken from the case message. Turn 2 submits a valid close finding with 
 and typology NONE, citing the first transfer of the get_alert result with its exact paid
 amount and currency. It never reads the database or the answer key, and it is not a baseline:
 its scores mean nothing.
+
+As the checker (the request offers the submit_review tool) it approves at once with a fixed
+review, so the fast eval runs the whole maker-checker path with no API key.
 """
 
 from __future__ import annotations
@@ -20,7 +23,15 @@ from harness.models.scripted_adapter import (
     tool_call_response,
 )
 from harness.models.types import ModelRequest, ModelResponse, TextBlock, ToolResultBlock
-from modules.aml.agent.models import SUBMIT_TOOL_NAME, AmlFindings, CitedAmount, Claim, Typology
+from modules.aml.agent.models import (
+    REVIEW_TOOL_NAME,
+    SUBMIT_TOOL_NAME,
+    AmlFindings,
+    AmlReview,
+    CitedAmount,
+    Claim,
+    Typology,
+)
 
 ALERT_ID_PATTERN = re.compile(r"AL-[0-9a-f]{12}")
 NO_ALERT_TEXT = "Scripted policy: no alert result to work from."
@@ -80,6 +91,15 @@ def _findings(alert: dict[str, Any]) -> dict[str, Any]:
     return findings.model_dump(mode="json")
 
 
+def scripted_review() -> dict[str, Any]:
+    review = AmlReview(
+        verdict="approve",
+        reasons=["Scripted plumbing review. Not a review."],
+        confidence=0.5,
+    )
+    return review.model_dump(mode="json")
+
+
 class ScriptedAmlPolicy:
     """ModelAdapter for the scripted profile. Stateless: each call looks at the messages."""
 
@@ -87,6 +107,8 @@ class ScriptedAmlPolicy:
         self.profile: ModelProfile = profile or default_scripted_profile()
 
     async def complete(self, req: ModelRequest) -> ModelResponse:
+        if any(t.name == REVIEW_TOOL_NAME for t in req.tools):
+            return tool_call_response([(REVIEW_TOOL_NAME, scripted_review())], id_prefix="r")
         alert = _alert_result(req)
         if alert is not None and alert["transfers"]["items"]:
             return tool_call_response([(SUBMIT_TOOL_NAME, _findings(alert))], id_prefix="s")

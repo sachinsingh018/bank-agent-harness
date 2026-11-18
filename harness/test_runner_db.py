@@ -1,4 +1,4 @@
-"""run_case against the real AML tools server with a scripted model.
+"""run_case against the real AML tools server with a scripted model, maker and checker.
 
 Skipped unless TEST_DATABASE_URL points at a local host. Reads TEST_DATABASE_URL only."""
 
@@ -6,11 +6,24 @@ import asyncio
 import json
 from typing import Any
 
-from harness.models.scripted_adapter import ScriptedAdapter, ScriptItem, tool_call_response
-from harness.models.types import ModelRequest, ModelResponse, ToolResultBlock
+from harness.config import HarnessLimits
+from harness.models.scripted_adapter import (
+    ScriptedAdapter,
+    ScriptItem,
+    text_response,
+    tool_call_response,
+)
+from harness.models.types import ModelRequest, ModelResponse, TextBlock, ToolResultBlock
 from harness.runner import run_case
 from harness.trace import CaseResult
-from modules.aml.agent.models import SUBMIT_TOOL_NAME, AmlFindings, CitedAmount, Claim, Typology
+from modules.aml.agent.models import (
+    REVIEW_TOOL_NAME,
+    SUBMIT_TOOL_NAME,
+    AmlFindings,
+    CitedAmount,
+    Claim,
+    Typology,
+)
 from modules.aml.agent.spec import AML_SPEC
 from tools.aml.query_registry import Samples
 
@@ -74,8 +87,27 @@ def _submit_wrong(prefix: str) -> ScriptItem:
     return item
 
 
+def _review(verdict: str, claim_index: int | None = None) -> ModelResponse:
+    concerns = [] if claim_index is None else [{"claim_index": claim_index, "issue": "Weak."}]
+    review = {
+        "verdict": verdict,
+        "reasons": [f"Scripted {verdict}."],
+        "concerns": concerns,
+        "confidence": 0.7,
+    }
+    return tool_call_response([(REVIEW_TOOL_NAME, review)], id_prefix="r")
+
+
+APPROVE = _review("approve")
+
+
 def _run(
-    harness_test_url: str, alert_id: str, tail: list[ScriptItem]
+    harness_test_url: str,
+    alert_id: str,
+    tail: list[ScriptItem],
+    *,
+    review: bool = True,
+    reviewer_limits: HarnessLimits | None = None,
 ) -> tuple[CaseResult, ScriptedAdapter]:
     script: list[ScriptItem] = [
         tool_call_response([("get_alert", {"alert_id": alert_id})], id_prefix="a"),
@@ -90,6 +122,8 @@ def _run(
             "scripted",
             database_url=harness_test_url,
             adapter=adapter,
+            review=review,
+            reviewer_limits=reviewer_limits,
         )
     )
     assert adapter.remaining == 0
@@ -97,7 +131,7 @@ def _run(
 
 
 def test_run_case_with_scripted_model(harness_test_url: str, harness_samples: Samples) -> None:
-    result, _ = _run(harness_test_url, harness_samples.alert_id, [_submit])
+    result, adapter = _run(harness_test_url, harness_samples.alert_id, [_submit, APPROVE])
     assert result.status == "proposed", (result.reason, result.verifier_results)
     assert result.reason is None
     assert [(r.name, r.passed) for r in result.verifier_results] == [
@@ -116,6 +150,84 @@ def test_run_case_with_scripted_model(harness_test_url: str, harness_samples: Sa
         "describe_detector",
         SUBMIT_TOOL_NAME,
     ]
+    # The checker ran with its own prompt and the review tool, and saw the findings.
+    assert result.review is not None and result.review.verdict == "approve"
+    assert result.review_required is True
+    checker_request = adapter.requests[-1]
+    assert REVIEW_TOOL_NAME in [t.name for t in checker_request.tools]
+    assert SUBMIT_TOOL_NAME not in [t.name for t in checker_request.tools]
+    first = checker_request.messages[0].blocks[0]
+    assert isinstance(first, TextBlock) and harness_samples.alert_id in first.text
+    assert "Scripted test finding." in first.text
+    assert result.review.prompt_version == "v1"
+    assert [r.name for r in result.review.verifier_results] == ["review_claim_index"]
+    assert len(result.trace.model_calls) == 3 and len(result.review.trace.model_calls) == 1
+    assert result.totals.input_tokens == 400  # maker 3 calls plus checker 1, 100 each
+
+
+def test_checker_reject_is_human_review(harness_test_url: str, harness_samples: Samples) -> None:
+    tail: list[ScriptItem] = [_submit, _review("reject", claim_index=0)]
+    result, _ = _run(harness_test_url, harness_samples.alert_id, tail)
+    assert result.status == "human_review" and result.reason == "reviewer_rejected"
+    assert result.findings is not None  # the maker's findings stay for the human
+    assert result.review is not None and result.review.verdict == "reject"
+    assert result.review.review is not None
+    assert result.review.review["concerns"] == [{"claim_index": 0, "issue": "Weak."}]
+
+
+def test_checker_bad_claim_index_twice_is_reviewer_failed(
+    harness_test_url: str, harness_samples: Samples
+) -> None:
+    tail: list[ScriptItem] = [
+        _submit,
+        _review("reject", claim_index=5),
+        _review("reject", claim_index=5),
+    ]
+    result, _ = _run(harness_test_url, harness_samples.alert_id, tail)
+    assert result.status == "human_review" and result.reason == "reviewer_failed"
+    assert result.review is not None and result.review.verdict is None
+    assert result.review.failure_reason == "verifier_failed"
+    assert result.review.verifier_results[0].passed is False
+
+
+def test_checker_schema_failure_twice_is_reviewer_failed(
+    harness_test_url: str, harness_samples: Samples
+) -> None:
+    bad = tool_call_response([(REVIEW_TOOL_NAME, {"verdict": "maybe"})], id_prefix="r")
+    result, _ = _run(harness_test_url, harness_samples.alert_id, [_submit, bad, bad])
+    assert result.status == "human_review" and result.reason == "reviewer_failed"
+    assert result.review is not None and result.review.failure_reason == "schema_failed"
+
+
+def test_checker_step_limit_is_reviewer_failed(
+    harness_test_url: str, harness_samples: Samples
+) -> None:
+    look = tool_call_response(
+        [("get_alert", {"alert_id": harness_samples.alert_id})] * 2, id_prefix="c"
+    )
+    result, _ = _run(
+        harness_test_url,
+        harness_samples.alert_id,
+        [_submit, look],
+        reviewer_limits=HarnessLimits(max_tool_steps=1),
+    )
+    assert result.status == "human_review" and result.reason == "reviewer_failed"
+    assert result.review is not None and result.review.failure_reason == "limit_steps"
+
+
+def test_maker_not_proposed_has_no_checker_run(
+    harness_test_url: str, harness_samples: Samples
+) -> None:
+    tail: list[ScriptItem] = [text_response("thinking"), text_response("still thinking")]
+    result, _ = _run(harness_test_url, harness_samples.alert_id, tail)
+    assert result.status == "human_review" and result.reason == "no_answer"
+    assert result.review is None and result.review_required is True
+
+
+def test_no_review_skips_the_checker(harness_test_url: str, harness_samples: Samples) -> None:
+    result, _ = _run(harness_test_url, harness_samples.alert_id, [_submit], review=False)
+    assert result.status == "proposed"
+    assert result.review is None and result.review_required is False
 
 
 def test_wrong_amount_twice_is_human_review(
@@ -134,7 +246,7 @@ def test_wrong_then_corrected_amount_is_proposed(
     harness_test_url: str, harness_samples: Samples
 ) -> None:
     result, adapter = _run(
-        harness_test_url, harness_samples.alert_id, [_submit_wrong("s1"), _submit]
+        harness_test_url, harness_samples.alert_id, [_submit_wrong("s1"), _submit], review=False
     )
     assert result.status == "proposed", (result.reason, result.verifier_results)
     assert result.trace.retry_used is True

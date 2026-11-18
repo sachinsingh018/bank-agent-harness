@@ -25,6 +25,7 @@ from evals.aml_agent_score import (
     grounding_metrics,
     outcome_from_result,
     render_summary,
+    review_metrics,
     score_run,
     subset_metrics,
     typology_metrics,
@@ -49,6 +50,7 @@ def _o(
     cost: str = "0",
     wall: int = 10,
     steps: int = 2,
+    verdict: str | None = None,
 ) -> Outcome:
     return Outcome(
         alert_id=alert_id,
@@ -62,6 +64,7 @@ def _o(
         cost_usd=Decimal(cost),
         wall_ms=wall,
         tool_steps=steps,
+        review_verdict=verdict,
     )
 
 
@@ -103,6 +106,39 @@ def test_precision_and_recall_with_and_without_human_review() -> None:
     hr = m["human_review"]
     assert hr["count"] == 1 and hr["rate"] == pytest.approx(0.166667)
     assert hr["reasons"] == {"limit_steps": 1}
+
+
+def test_review_metrics_hand_computed() -> None:
+    rejected = {"status": "human_review", "reason": "reviewer_rejected", "verdict": "reject"}
+    pairs = [
+        (_o("A1", "escalate", 0.9, "FAN-OUT", verdict="approve"), _t("A1", True)),
+        (_o("A2", "escalate", 0.7, "STACK", **rejected), _t("A2", False)),  # type: ignore[arg-type]
+        (_o("A3", "close", 0.3, "NONE", **rejected), _t("A3", True)),  # type: ignore[arg-type]
+        (_o("A4", "close", 0.1, "NONE", verdict="approve"), _t("A4", False)),
+        (
+            _o(
+                "A5",
+                "close",
+                0.2,
+                "NONE",
+                status="human_review",
+                reason="reviewer_failed",
+                verdict="failed",
+            ),
+            _t("A5", False),
+        ),
+        (_o("A6", "close", 0.1, "NONE"), _t("A6", False)),  # not reviewed
+    ]
+    m = review_metrics(pairs)
+    assert (m["reviewed"], m["approved"], m["rejected"], m["failed"]) == (5, 2, 2, 1)
+    assert m["reject_rate"] == 0.4
+    assert m["rejected_escalations"] == {"true_positive": 0, "false_positive": 1}
+    assert m["rejected_closes"] == {"missed_positive": 1, "true_negative": 0}
+    # Without review: flagged A1, A2 (tp 1, fp 1, fn 1). With review: A1, A2, A3, A5.
+    assert m["without_review"] == {"precision": 0.5, "recall": 0.5}
+    assert m["with_review"] == {"precision": 0.5, "recall": 1.0}
+    assert m["precision_change"] == 0.0 and m["recall_change"] == 0.5
+    assert m["indicative"] is True
 
 
 def test_human_review_ranks_above_every_confidence() -> None:

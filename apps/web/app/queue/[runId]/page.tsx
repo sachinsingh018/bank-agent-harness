@@ -11,6 +11,7 @@ import {
   formatStatus,
   formatTime,
   readFindings,
+  reviewLabel,
   type Claim,
 } from "../../../lib/format";
 import { isValidRunId, webDecisionsEnabled } from "../../../lib/flags";
@@ -166,6 +167,61 @@ function ClaimBlock({
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function ReviewerPanel({ run }: { run: RunDetail }) {
+  const review = run.review;
+  if (!review) {
+    return <p className="muted">No reviewer ran for this case.</p>;
+  }
+  const body = review.review ?? {};
+  const reasons = strings(body.reasons);
+  const concerns = Array.isArray(body.concerns) ? body.concerns.filter(isRecord) : [];
+  const confidence = typeof body.confidence === "number" ? body.confidence.toFixed(2) : null;
+  return (
+    <div className="panel">
+      <p className="muted">
+        A second agent checked the findings with its own checklist. A rejection or failure never
+        closes the case: it comes to you.
+      </p>
+      <p>
+        Verdict: <strong>{reviewLabel(review.verdict)}</strong>
+        {review.failure_reason ? ` (${review.failure_reason.replaceAll("_", " ")})` : ""}
+        {confidence !== null ? `, reviewer confidence ${confidence}` : ""}
+      </p>
+      {reasons.length > 0 && (
+        <>
+          <p className="muted">Reasons:</p>
+          <ul className="plain">
+            {reasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {concerns.length > 0 && (
+        <>
+          <p className="muted">Concerns:</p>
+          <ul className="plain">
+            {concerns.map((c, i) => (
+              <li key={i}>
+                {typeof c.claim_index === "number" ? `Claim ${c.claim_index + 1}: ` : ""}
+                {typeof c.issue === "string" ? c.issue : ""}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="muted">
+        {review.model.provider} / {review.model.model}, prompt {review.prompt.version},{" "}
+        {review.tool_steps} tool steps, {(review.wall_ms / 1000).toFixed(1)} s, ${review.cost_usd}
+      </p>
     </div>
   );
 }
@@ -381,6 +437,9 @@ export default async function CasePage({
           </dd>
         </div>
       </dl>
+
+      <h2>Reviewer</h2>
+      <ReviewerPanel run={run} />
 
       <h2>Decision</h2>
       <DecisionPanel run={run} />

@@ -1,4 +1,5 @@
-"""Load agent loop limits from config/harness.toml."""
+"""Load agent loop limits from config/harness.toml: [limits] for the investigating agent (the
+maker) and [reviewer] for the checker in maker-checker."""
 
 from __future__ import annotations
 
@@ -25,11 +26,22 @@ class _HarnessFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     limits: HarnessLimits
+    reviewer: HarnessLimits | None = None
+
+
+def _load(path: Path) -> _HarnessFile:
+    with path.open("rb") as f:
+        return _HarnessFile.model_validate(tomllib.load(f))
 
 
 def load_limits(path: Path = DEFAULT_HARNESS_PATH) -> HarnessLimits:
-    with path.open("rb") as f:
-        return _HarnessFile.model_validate(tomllib.load(f)).limits
+    return _load(path).limits
+
+
+def load_reviewer_limits(path: Path = DEFAULT_HARNESS_PATH) -> HarnessLimits:
+    """Limits for the checker run. Without a [reviewer] section the maker's limits apply."""
+    loaded = _load(path)
+    return loaded.reviewer if loaded.reviewer is not None else loaded.limits
 
 
 def effective_max_output_tokens(limits: HarnessLimits, profile: ModelProfile) -> int:

@@ -29,9 +29,12 @@ HumanReviewReason = Literal[
     "verifier_error",
     "tool_failure",
     "internal_error",
+    "reviewer_rejected",  # the checker read the verified findings and rejected them
+    "reviewer_failed",  # the checker hit a limit, broke its schema or failed otherwise
 ]
 CaseStatus = Literal["proposed", "human_review"]
 RetryReason = Literal["no_answer", "schema_failed", "verifier_failed"]
+ReviewVerdict = Literal["approve", "reject"]
 
 
 class _Strict(BaseModel):
@@ -99,6 +102,40 @@ class RunTrace(_Strict):
         return self
 
 
+class ReviewOutcome(_Strict):
+    """The checker's run on a maker result that passed every verifier (maker-checker).
+
+    verdict is None exactly when the checker failed; failure_reason is then the checker's own
+    stop reason. review is the checker's validated output model, dumped to JSON data; the
+    harness reads only its verdict. totals, cost and tool steps are the checker's alone."""
+
+    verdict: ReviewVerdict | None
+    failure_reason: HumanReviewReason | None
+    review: dict[str, Any] | None
+    verifier_results: list[VerifierResult]
+    profile: str
+    provider: str
+    model: str
+    prompt_version: str
+    prompt_sha256: str
+    totals: Usage
+    cost_usd: str  # exact Decimal written as a string
+    tool_steps: int = Field(ge=0)
+    wall_ms: int = Field(ge=0)
+    trace: RunTrace
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if (self.verdict is None) == (self.failure_reason is None):
+            raise ValueError("a review has either a verdict or a failure reason")
+        if self.verdict is not None:
+            if self.review is None:
+                raise ValueError("a review with a verdict needs the review itself")
+            if self.review.get("verdict") != self.verdict:
+                raise ValueError("the verdict must match the review's verdict field")
+        return self
+
+
 class CaseResult(_Strict):
     case_id: str
     status: CaseStatus
@@ -108,11 +145,18 @@ class CaseResult(_Strict):
     totals: Usage
     cost_usd: str  # exact Decimal written as a string
     tool_steps: int = Field(ge=0)
-    wall_ms: int = Field(ge=0)
-    trace: RunTrace
+    wall_ms: int = Field(ge=0)  # maker plus checker
+    trace: RunTrace  # the maker's trace; the checker's is in review.trace
+    # totals and cost_usd include the checker; tool_steps is the maker's (see review).
+    review: ReviewOutcome | None = None
+    # True when the module has a checker and review was not turned off for this run: then a
+    # proposed result needs an approving review. Results written before maker-checker have
+    # no such field and load as False.
+    review_required: bool = False
 
     @model_validator(mode="after")
     def _invariants(self) -> Self:
+        self._review_invariants()
         if self.status == "proposed":
             if self.findings is None:
                 raise ValueError("a proposed result needs findings")
@@ -127,3 +171,21 @@ class CaseResult(_Strict):
         elif self.reason == "verifier_error" and self.trace.error_class is None:
             raise ValueError("a verifier_error result needs the exception class in the trace")
         return self
+
+    def _review_invariants(self) -> None:
+        review = self.review
+        if self.reason in ("reviewer_rejected", "reviewer_failed"):
+            if review is None:
+                raise ValueError("a reviewer reason needs the review")
+            if self.findings is None or not self.verifier_results:
+                raise ValueError("a reviewer reason needs verified findings")
+            if not all(r.passed for r in self.verifier_results):
+                raise ValueError("only findings that passed every verifier are reviewed")
+            wanted = "reject" if self.reason == "reviewer_rejected" else None
+            if review.verdict != wanted:
+                raise ValueError(f"{self.reason} does not match the review verdict")
+            return
+        if review is not None and (self.status != "proposed" or review.verdict != "approve"):
+            raise ValueError("a review that is not a reject or a failure must approve a proposal")
+        if self.status == "proposed" and self.review_required and review is None:
+            raise ValueError("a proposed result needs an approving review")

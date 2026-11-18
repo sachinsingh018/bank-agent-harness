@@ -5,7 +5,8 @@ Usage (from the repo root):
 
 Reads manifest.json and results.jsonl from the run directory and writes, in one transaction:
 the eval_runs row (with the original run id and times), one agent run per case through
-harness.records.record_case_result, and the finished fields. With --score, score.json from
+harness.records.record_case_result (with its agent_reviews row when the checker reviewed it),
+and the finished fields. With --score, score.json from
 the run directory is also written to eval_results when the file exists. This is how runs made
 locally are copied to the hosted database without spending model requests.
 

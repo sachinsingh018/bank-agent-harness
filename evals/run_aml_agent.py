@@ -3,7 +3,7 @@
 Usage (from the repo root):
     uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v2.json \
         --profile scripted [--limit N] [--concurrency 1] [--out-dir evals/runs] [--allow-remote]
-        [--record]
+        [--record] [--no-review] [--reviewer-profile NAME]
 
 Writes evals/runs/<run_id>/results.jsonl (one CaseResult per line) and manifest.json. The
 agent stays read-only: this script writes files only, never the database. The database URL
@@ -15,6 +15,10 @@ HARNESS_WRITE_DATABASE_URL (never DATABASE_URL, and never passed to the tools se
 eval_runs row at the start (finished fields at the end) and each case through
 harness.records.record_case_result. The same local-only check applies to that URL. A case
 that could not be recorded makes the script exit 1 after the run.
+
+Maker-checker is on by default: every proposed case goes to the checker, with the same profile
+unless --reviewer-profile is given. --no-review turns it off for ablations. The manifest's
+"review" block records whether it was on and which profile and prompt the checker used.
 
 Cases that end in human review are a valid outcome (exit code 0). Only setup errors exit
 non-zero. The last stdout line is run_dir=<path>, so CI can pick it up.
@@ -42,7 +46,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Engine
 
 from evals.scripted_policy import ScriptedAmlPolicy
-from harness.config import HarnessLimits, load_limits
+from harness.config import HarnessLimits, load_limits, load_reviewer_limits
 from harness.db.session import (
     LOCAL_HOSTS,
     REDIRECT_QUERY_KEYS,
@@ -63,7 +67,7 @@ from harness.records import (
 )
 from harness.runner import run_case
 from harness.trace import CaseResult
-from modules.aml.agent.spec import AML_SPEC, CASE_MESSAGE_PROMPT
+from modules.aml.agent.spec import AML_SPEC, CASE_MESSAGE_PROMPT, REVIEW_MESSAGE_PROMPT
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "evals" / "runs"
@@ -167,6 +171,48 @@ def _relative(path: Path) -> str:
         return str(path)
 
 
+def _prompt_info(prompt: LoadedPrompt) -> dict[str, str]:
+    return {"path": prompt.path, "version": prompt.version, "sha256": prompt.sha256}
+
+
+@dataclass(frozen=True)
+class ReviewSetup:
+    """Maker-checker settings for a run. profile is None when review is off."""
+
+    profile: ModelProfile | None
+    limits: HarnessLimits | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.profile is not None
+
+
+def review_block(review: ReviewSetup) -> dict[str, Any]:
+    if review.profile is None or AML_SPEC.reviewer is None:
+        return {"enabled": False}
+    limits = review.limits if review.limits is not None else load_reviewer_limits()
+    return {
+        "enabled": True,
+        "model": {
+            "profile": review.profile.name,
+            "provider": review.profile.provider,
+            "model": review.profile.model,
+        },
+        "prompt": _prompt_info(load_prompt(AML_SPEC.reviewer.prompt)),
+        "message_prompt": _prompt_info(load_prompt(REVIEW_MESSAGE_PROMPT)),
+        "limits": limits.model_dump(),
+    }
+
+
+def _review_counts(results: Sequence[CaseResult]) -> dict[str, int]:
+    verdicts = Counter(
+        "failed" if r.review.verdict is None else r.review.verdict
+        for r in results
+        if r.review is not None
+    )
+    return dict(sorted(verdicts.items()))
+
+
 def build_manifest(
     *,
     run_id: str,
@@ -178,10 +224,12 @@ def build_manifest(
     finished_at: datetime | None,
     results: Sequence[CaseResult],
     concurrency: int,
+    review: ReviewSetup | None = None,
 ) -> dict[str, Any]:
     prompt = load_prompt(AML_SPEC.prompt)
     case_prompt = load_prompt(CASE_MESSAGE_PROMPT)
     reasons = Counter(r.reason for r in results if r.reason is not None)
+    review = review if review is not None else ReviewSetup(profile=None)
     return {
         "run_id": run_id,
         "module": AML_SPEC.name,
@@ -194,6 +242,7 @@ def build_manifest(
         },
         "model": {"profile": profile.name, "provider": profile.provider, "model": profile.model},
         "limits": limits.model_dump(),
+        "review": review_block(review),
         "concurrency": concurrency,
         "dataset": {
             "name": dataset.body.dataset,
@@ -210,6 +259,7 @@ def build_manifest(
             "total": len(results),
             "by_status": dict(sorted(Counter(r.status for r in results).items())),
             "by_human_review_reason": dict(sorted(reasons.items())),
+            "by_review_verdict": _review_counts(results),
         },
         "total_cost_usd": str(sum((Decimal(r.cost_usd) for r in results), Decimal(0))),
     }
@@ -257,7 +307,9 @@ async def _run_all(
     concurrency: int,
     results_path: Path,
     recorder: CaseRecorder | None = None,
+    review: ReviewSetup | None = None,
 ) -> list[CaseResult]:
+    review = review if review is not None else ReviewSetup(profile=None)
     gate = asyncio.Semaphore(concurrency)
     results: list[CaseResult] = []
     with results_path.open("w", encoding="utf-8") as out:
@@ -272,6 +324,12 @@ async def _run_all(
                     limits=limits,
                     adapter=make_run_adapter(profile),
                     recorder=recorder,
+                    review=review.enabled,
+                    reviewer_profile_name=None if review.profile is None else review.profile.name,
+                    reviewer_adapter=None
+                    if review.profile is None
+                    else make_run_adapter(review.profile),
+                    reviewer_limits=review.limits,
                 )
             out.write(result.model_dump_json() + "\n")
             out.flush()
@@ -292,10 +350,14 @@ def run_dataset(
     out_dir: Path = DEFAULT_OUT_DIR,
     limits: HarnessLimits | None = None,
     record_engine: Engine | None = None,
+    review: bool = True,
+    reviewer_profile_name: str | None = None,
+    reviewer_limits: HarnessLimits | None = None,
 ) -> Path:
     """Run every alert of the dataset and return the run directory. The caller has already
     checked the database targets. With record_engine, the run is also written to the records
-    tables and the manifest gets a "records" block with the recorded and failed case counts."""
+    tables and the manifest gets a "records" block with the recorded and failed case counts.
+    review=False turns the checker off; reviewer_profile_name defaults to profile_name."""
     if concurrency < 1:
         raise SetupError("--concurrency must be at least 1")
     if limit is not None and limit < 1:
@@ -306,6 +368,19 @@ def run_dataset(
     except KeyError as exc:
         raise SetupError(str(exc.args[0])) from None
     check_api_key(profile)
+    if not review and reviewer_profile_name is not None:
+        raise SetupError("--reviewer-profile cannot be used with --no-review")
+    setup = ReviewSetup(profile=None)
+    if review and AML_SPEC.reviewer is not None:
+        try:
+            reviewer_profile = get_profile(reviewer_profile_name or profile_name)
+        except KeyError as exc:
+            raise SetupError(str(exc.args[0])) from None
+        check_api_key(reviewer_profile)
+        setup = ReviewSetup(
+            profile=reviewer_profile,
+            limits=reviewer_limits if reviewer_limits is not None else load_reviewer_limits(),
+        )
     limits = limits if limits is not None else load_limits()
     alert_ids = dataset.body.alert_ids[:limit] if limit is not None else dataset.body.alert_ids
     started_at = datetime.now(UTC)
@@ -325,6 +400,7 @@ def run_dataset(
             finished_at=None,
             results=[],
             concurrency=concurrency,
+            review=setup,
         )
         start["counts"] = None
         start["total_cost_usd"] = None
@@ -353,6 +429,7 @@ def run_dataset(
             concurrency,
             run_dir / RESULTS_FILE,
             recorder,
+            setup,
         )
     )
     manifest = build_manifest(
@@ -365,6 +442,7 @@ def run_dataset(
         finished_at=datetime.now(UTC),
         results=results,
         concurrency=concurrency,
+        review=setup,
     )
     if record_engine is not None and recorder is not None:
         engine = record_engine
@@ -407,6 +485,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"also write the run to the records tables through {WRITE_URL_ENV}",
     )
+    parser.add_argument(
+        "--no-review", action="store_true", help="turn the checker (maker-checker) off"
+    )
+    parser.add_argument(
+        "--reviewer-profile",
+        default=None,
+        help="model profile for the checker (default: the same as --profile)",
+    )
     return parser
 
 
@@ -438,6 +524,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 concurrency=args.concurrency,
                 out_dir=args.out_dir,
                 record_engine=record_engine,
+                review=not args.no_review,
+                reviewer_profile_name=args.reviewer_profile,
             )
         finally:
             if record_engine is not None:
@@ -450,6 +538,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"cases: {counts['total']}, by status: {counts['by_status']}, "
         f"human review reasons: {counts['by_human_review_reason']}, "
+        f"review verdicts: {counts['by_review_verdict']}, "
         f"cost usd: {manifest['total_cost_usd']}"
     )
     records = manifest.get("records")
