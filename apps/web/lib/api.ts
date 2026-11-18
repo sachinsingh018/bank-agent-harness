@@ -128,6 +128,11 @@ export interface ReviewOut {
   created_at: string;
 }
 
+export interface LessonOut {
+  id: number;
+  text: string;
+}
+
 export interface RunDetail {
   run_id: string;
   case_id: string;
@@ -152,6 +157,9 @@ export interface RunDetail {
   not_fetched_txn_ids: number[];
   decision: DecisionInfo | null;
   review: ReviewOut | null;
+  // Saved reviewer lessons shown to the agent at the start of the run. Optional so the page
+  // still works against an API from before corrections memory.
+  lessons?: LessonOut[];
 }
 
 export interface FindingsEdits {

@@ -47,9 +47,11 @@ from evals.aml_rules_score import (
 )
 from evals.run_aml_agent import (
     MANIFEST_FILE,
+    REPO_ROOT,
     RESULTS_FILE,
     SetupError,
     check_target,
+    load_dataset,
     target_text,
 )
 from harness.db.models import Alert
@@ -502,6 +504,43 @@ def subset_metrics(
     }
 
 
+SAME_DATASET_WARNING = (
+    "{n} lesson(s) used in this run were saved on alerts of the scored dataset; scores may be "
+    "optimistic (lessons should come from other cases)"
+)
+
+
+def dataset_alert_ids(manifest: Mapping[str, Any], results: Sequence[CaseResult]) -> set[str]:
+    """Alert ids of the scored dataset: the dataset file named in the manifest when it can be
+    read, else the alerts in the run."""
+    ids = {r.case_id for r in results}
+    path = (manifest.get("dataset") or {}).get("path")
+    if isinstance(path, str):
+        full = Path(path) if Path(path).is_absolute() else REPO_ROOT / path
+        try:
+            ids |= set(load_dataset(full).body.alert_ids)
+        except SetupError:
+            pass
+    return ids
+
+
+def lessons_metrics(manifest: Mapping[str, Any], results: Sequence[CaseResult]) -> dict[str, Any]:
+    """How many cases got lessons and which lesson ids, plus a warning when a lesson's source
+    alert (from the manifest) is in the scored dataset. No alert ids in the output."""
+    block = manifest.get("lessons") or {}
+    used = sorted({i for r in results for i in r.trace.lesson_ids})
+    sources = block.get("sources") or {}
+    in_dataset = dataset_alert_ids(manifest, results)
+    same = sorted(i for i in used if sources.get(str(i)) in in_dataset)
+    return {
+        "enabled": bool(block.get("enabled", False)),
+        "cases_with_lessons": sum(1 for r in results if r.trace.lesson_ids),
+        "lesson_ids": used,
+        "same_dataset_lesson_ids": same,
+        "warning": SAME_DATASET_WARNING.format(n=len(same)) if same else None,
+    }
+
+
 def score_run(
     manifest: Mapping[str, Any],
     results: Sequence[CaseResult],
@@ -527,6 +566,7 @@ def score_run(
         "late_cutoff": LATE_CUTOFF.isoformat(),
         "headline": "early",
         "splits": {name: subset_metrics(by_split[name], labels, target_recall) for name in SPLITS},
+        "lessons": lessons_metrics(manifest, results),
         "grounding_rule": GROUNDING_RULE,
         "notes": list(NOTES),
     }
@@ -572,6 +612,14 @@ def render_summary(report: Mapping[str, Any]) -> str:
     lines = [f"run: {report['run_id']}", "headline is early (window ends on or before 2022-09-10)"]
     for name in SPLITS:
         lines += _split_lines(name, report["splits"][name])
+    lessons = report.get("lessons")
+    if lessons and lessons["enabled"]:
+        lines.append(
+            f"lessons: {lessons['cases_with_lessons']} cases with lessons, ids "
+            f"{lessons['lesson_ids']}"
+        )
+        if lessons["warning"]:
+            lines.append(f"warning: {lessons['warning']}")
     return "\n".join(lines)
 
 

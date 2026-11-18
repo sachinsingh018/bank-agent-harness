@@ -39,7 +39,7 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -50,6 +50,7 @@ from pydantic import BaseModel, ValidationError
 
 from harness.arg_repair import unpack_json_strings
 from harness.config import HarnessLimits, effective_max_output_tokens
+from harness.lessons import Lesson, render_lessons
 from harness.mcp_client import OutcomeCode, ToolErrorPayload, ToolOutcome
 from harness.models.config import ModelProfile, cost_usd
 from harness.models.types import (
@@ -196,6 +197,7 @@ class _Run:
     lookup_factory: LookupFactory
     clock: Callable[[], float]
     keep_tool_content: bool
+    lessons: tuple[Lesson, ...] = ()
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     start: float = 0.0
     messages: list[Message] = field(default_factory=list)
@@ -211,6 +213,7 @@ class _Run:
     tool_results: list[ToolResultContent] = field(default_factory=list)
     error_class: str | None = None
     submission_repairs: list[str] = field(default_factory=list)
+    lesson_ids: list[int] = field(default_factory=list)
 
     # ---- the loop -------------------------------------------------------------------------
 
@@ -229,7 +232,7 @@ class _Run:
         submit_name = self.spec.submit_tool.name
         tool_specs = [*self.tools.tools, self.spec.submit_tool]
         max_out = effective_max_output_tokens(self.limits, self.profile)
-        first = self.spec.build_case_message(self.case_id)
+        first = self._first_message()
         self.messages.append(Message(role="user", blocks=[TextBlock(text=first)]))
         while True:
             self._check_time()
@@ -278,6 +281,18 @@ class _Run:
                 self._no_answer()
                 continue
             await self._handle_calls(calls, submit_name)
+
+    def _first_message(self) -> str:
+        """The module's case message, plus the lessons block when there are lessons. Lessons
+        without a template are a wiring mistake (internal_error)."""
+        first = self.spec.build_case_message(self.case_id)
+        if not self.lessons:
+            return first
+        if self.spec.lessons_template is None:
+            raise ValueError("lessons were given but the module has no lessons template")
+        block = render_lessons(load_prompt(self.spec.lessons_template).text, self.lessons)
+        self.lesson_ids = [lesson.id for lesson in self.lessons]
+        return f"{first}\n\n{block}"
 
     def _check_time(self) -> None:
         if self.clock() - self.start >= self.limits.max_wall_seconds:
@@ -533,6 +548,7 @@ class _Run:
             seen_txn_ids=sorted(self.seen),
             error_class=self.error_class,
             submission_repairs=self.submission_repairs,
+            lesson_ids=self.lesson_ids,
         )
         wall_ms = max(0, int((self.clock() - self.start) * 1000))
         return CaseResult(
@@ -561,11 +577,14 @@ async def run_agent(
     verify_context_factory: LookupFactory,
     clock: Callable[[], float] = time.monotonic,
     keep_tool_content: bool = True,
+    lessons: Sequence[Lesson] = (),
 ) -> CaseResult:
     """Run one case. Returns proposed only for a valid submission that passes every verifier;
     every other ending is human_review with the partial trace.
 
-    verify_context_factory returns the module's read-only lookup for VerifyContext."""
+    verify_context_factory returns the module's read-only lookup for VerifyContext. lessons,
+    when not empty, are rendered through spec.lessons_template and added to the first user
+    message; their ids go on the trace."""
     run = _Run(
         case_id=case_id,
         spec=spec,
@@ -577,5 +596,6 @@ async def run_agent(
         lookup_factory=verify_context_factory,
         clock=clock,
         keep_tool_content=keep_tool_content,
+        lessons=tuple(lessons),
     )
     return await run.run()

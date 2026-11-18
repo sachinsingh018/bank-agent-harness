@@ -210,3 +210,42 @@ def test_unknown_profile_and_bad_dataset_are_setup_errors(tmp_path: Path) -> Non
     bad.write_text("{}")
     with pytest.raises(SetupError, match="not a valid dataset"):
         run_dataset(bad, "scripted", url, out_dir=tmp_path)
+
+
+def test_runner_lessons_on_needs_the_write_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", LOCAL)
+    monkeypatch.delenv("HARNESS_WRITE_DATABASE_URL", raising=False)
+    monkeypatch.setattr(run_aml_agent, "run_dataset", _no_connect)
+    argv = ["--dataset", str(SMOKE), "--profile", "scripted", "--out-dir", str(tmp_path)]
+    assert run_aml_agent.main([*argv, "--lessons", "on"]) == 2
+    assert "--lessons on needs HARNESS_WRITE_DATABASE_URL" in capsys.readouterr().out
+
+
+def test_runner_lessons_on_refuses_a_remote_write_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", LOCAL)
+    monkeypatch.setenv("HARNESS_WRITE_DATABASE_URL", REMOTE)
+    monkeypatch.setattr(run_aml_agent, "run_dataset", _no_connect)
+    monkeypatch.setattr(run_aml_agent, "get_write_engine", _no_connect)
+    argv = ["--dataset", str(SMOKE), "--profile", "scripted", "--out-dir", str(tmp_path)]
+    assert run_aml_agent.main([*argv, "--lessons", "on"]) == 2
+    out = capsys.readouterr().out
+    assert "HARNESS_WRITE_DATABASE_URL is not local" in out and "secretpw" not in out
+
+
+def test_lessons_flag_defaults_to_off() -> None:
+    args = run_aml_agent._build_parser().parse_args(["--dataset", "d", "--profile", "p"])
+    assert args.lessons == "off"
+
+
+def test_heldout_alerts_are_excluded_as_lesson_sources() -> None:
+    heldout = run_aml_agent.heldout_alert_ids()
+    body = json.loads(run_aml_agent.HELDOUT_DATASET.read_text())
+    assert heldout == set(body["alert_ids"]) and heldout
+
+
+def test_lessons_block_off_and_on() -> None:
+    assert run_aml_agent.lessons_block(run_aml_agent.LessonsSetup(), []) == {"enabled": False}

@@ -189,8 +189,9 @@ class CaseEvent(Base):
 
 class Correction(Base):
     """A lesson a reviewer saved with a decision, for future cases. Append-only (a trigger
-    refuses UPDATE, DELETE and TRUNCATE). Only the human approval flow in apps/api writes it,
-    and nothing in the agent reads it yet (docs/plans/edits-and-corrections.md)."""
+    refuses UPDATE, DELETE and TRUNCATE). Only the human approval flow in apps/api writes it.
+    Only modules/aml/memory.py (outside the agent) and apps/api read it; the runner passes the
+    selected rules to the loop as lessons (docs/plans/corrections-memory.md)."""
 
     __tablename__ = "corrections"
     __table_args__ = (

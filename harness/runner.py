@@ -7,16 +7,23 @@ the separate write connection in harness/records.py, which the agent never sees.
 Maker-checker: when the module has a reviewer and review is on, a proposed maker result goes to
 the checker in the same tool session (harness/review.py). The checker uses the maker's profile
 unless reviewer_profile_name is given, and the [reviewer] limits.
+
+Lessons (opt in): the caller may pass a lessons provider (case id -> lessons). The runner,
+which sits outside the agent, calls it once per case before the loop starts and hands the
+lessons to the maker only; the checker never sees them. The provider holds its own read-only
+connection; the runner still imports no database code.
 """
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from collections.abc import Callable
 from contextlib import AsyncExitStack
 from typing import Protocol, runtime_checkable
 
 from harness.config import HarnessLimits, load_limits, load_reviewer_limits
+from harness.lessons import Lesson, LessonsProvider
 from harness.loop import LookupFactory, human_review_without_run, run_agent
 from harness.mcp_client import ToolSession
 from harness.models.config import ModelProfile, get_profile
@@ -50,6 +57,7 @@ async def run_case(
     reviewer_profile_name: str | None = None,
     reviewer_adapter: ModelAdapter | None = None,
     reviewer_limits: HarnessLimits | None = None,
+    lessons_provider: LessonsProvider | None = None,
 ) -> CaseResult:
     """Run one case end to end. A tools server that fails to start is human_review
     tool_failure with an empty trace. Configuration errors (unknown profile, missing prompt
@@ -63,6 +71,10 @@ async def run_case(
     review=False turns the checker off (ablations). The checker's adapter is reviewer_adapter,
     else the maker's adapter when both use the same profile (a scripted adapter then simply
     continues its script), else a new adapter for the reviewer profile.
+
+    lessons_provider, when given, is asked for this case's lessons before the loop starts. A
+    provider that raises ends the case as human_review internal_error with the exception class
+    in the trace (the case is never run without the lessons it was meant to get).
 
     recorder, when given, is called once with the finished result (every outcome, including
     a tools server that did not start) and returns the stored run id. A recording failure
@@ -82,6 +94,7 @@ async def run_case(
         reviewer_profile_name=reviewer_profile_name,
         reviewer_adapter=reviewer_adapter,
         reviewer_limits=reviewer_limits,
+        lessons_provider=lessons_provider,
     )
     if recorder is not None:
         try:
@@ -105,6 +118,7 @@ async def _run_case(
     reviewer_profile_name: str | None,
     reviewer_adapter: ModelAdapter | None,
     reviewer_limits: HarnessLimits | None,
+    lessons_provider: LessonsProvider | None,
 ) -> CaseResult:
     limits = limits if limits is not None else load_limits()
     profile = get_profile(profile_name)
@@ -119,6 +133,15 @@ async def _run_case(
         if reviewer_adapter is None:
             same = reviewer_profile.name == profile.name
             reviewer_adapter = adapter if same else make_adapter(reviewer_profile)
+    lessons: list[Lesson] = []
+    if lessons_provider is not None:
+        try:
+            lessons = list(await asyncio.to_thread(lessons_provider, case_id))
+        except Exception as exc:
+            failed = human_review_without_run(
+                case_id, spec.name, "internal_error", error_class=type(exc).__name__
+            )
+            return apply_review(failed, None, required)
     async with AsyncExitStack() as stack:
         try:
             session = await stack.enter_async_context(
@@ -146,6 +169,7 @@ async def _run_case(
             prompt=prompt,
             verify_context_factory=lookup_factory,
             keep_tool_content=keep_tool_content,
+            lessons=lessons,
         )
         outcome: ReviewOutcome | None = None
         if required and maker.status == "proposed":

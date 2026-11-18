@@ -23,6 +23,7 @@ from evals.aml_agent_score import (
     fp_reduction_at_decisions,
     fp_reduction_at_recall,
     grounding_metrics,
+    lessons_metrics,
     outcome_from_result,
     render_summary,
     review_metrics,
@@ -331,3 +332,45 @@ def test_baseline_matches_rules_scorer_alert_block_on_constructed_set() -> None:
 def test_baseline_file_numbers_are_the_known_ones() -> None:
     block = json.loads(BASELINE_FILE.read_text())["metrics"]["overall"]["alerts"]
     assert (block["raised"], block["true_strict"], block["precision_strict"]) == (171, 39, 0.22807)
+
+
+def _with_lessons(alert_id: str, ids: list[int]) -> CaseResult:
+    result = _hr(alert_id)
+    trace = result.trace.model_copy(update={"lesson_ids": ids})
+    return result.model_copy(update={"trace": trace})
+
+
+def test_lessons_metrics_count_and_warn_on_same_dataset_sources(tmp_path: Path) -> None:
+    dataset = tmp_path / "ds.json"
+    dataset.write_text(
+        json.dumps(
+            {
+                "dataset": "t",
+                "version": "v0",
+                "ruleset_version": "v1",
+                "alert_ids": ["AL-a", "AL-b", "AL-c"],
+                "created_by": "test",
+                "split_seed": 42,
+            }
+        )
+    )
+    results = [_with_lessons("AL-a", [3, 5]), _with_lessons("AL-b", [5]), _hr("AL-x")]
+    manifest = {
+        "dataset": {"path": str(dataset)},
+        "lessons": {"enabled": True, "sources": {"3": "AL-other", "5": "AL-c"}},
+    }
+    m = lessons_metrics(manifest, results)
+    assert m["enabled"] is True and m["cases_with_lessons"] == 2
+    assert m["lesson_ids"] == [3, 5]
+    assert m["same_dataset_lesson_ids"] == [5]
+    assert m["warning"] is not None and "1 lesson" in m["warning"]
+    assert "AL-" not in json.dumps(m)
+
+    off = lessons_metrics({"dataset": {}}, [_hr("AL-a")])
+    assert off == {
+        "enabled": False,
+        "cases_with_lessons": 0,
+        "lesson_ids": [],
+        "same_dataset_lesson_ids": [],
+        "warning": None,
+    }

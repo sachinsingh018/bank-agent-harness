@@ -57,3 +57,6 @@ class ModuleSpec:
     # If the factory has a close() method, run_case calls it when the case ends.
     make_lookup_factory: Callable[[str], Callable[[], Any]]
     reviewer: ReviewerSpec | None = None  # the checker; None means no maker-checker
+    # Versioned template with a {lessons} placeholder, added to the first user message when
+    # the runner passes lessons (harness.lessons). None means the module takes no lessons.
+    lessons_template: PromptRef | None = None

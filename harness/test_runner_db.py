@@ -6,7 +6,12 @@ import asyncio
 import json
 from typing import Any
 
+from sqlalchemy import Engine, select
+
 from harness.config import HarnessLimits
+from harness.db.records_models import CaseEvent
+from harness.lessons import Lesson
+from harness.models.config import get_profile
 from harness.models.scripted_adapter import (
     ScriptedAdapter,
     ScriptItem,
@@ -14,6 +19,8 @@ from harness.models.scripted_adapter import (
     tool_call_response,
 )
 from harness.models.types import ModelRequest, ModelResponse, TextBlock, ToolResultBlock
+from harness.prompts import load_prompt
+from harness.records import record_case_result, verify_chain
 from harness.runner import run_case
 from harness.trace import CaseResult
 from modules.aml.agent.models import (
@@ -24,7 +31,8 @@ from modules.aml.agent.models import (
     Claim,
     Typology,
 )
-from modules.aml.agent.spec import AML_SPEC
+from modules.aml.agent.spec import AML_SPEC, build_case_message
+from tests_support.records_db import records_cleaned
 from tools.aml.query_registry import Samples
 
 
@@ -255,3 +263,68 @@ def test_wrong_then_corrected_amount_is_proposed(
     last = adapter.requests[-1].messages[-1].blocks[0]
     assert isinstance(last, ToolResultBlock) and last.is_error
     assert "does not match the stored amount" in last.content
+
+
+def test_lessons_reach_the_maker_only_and_are_recorded(
+    harness_test_url: str, harness_samples: Samples, harness_engine: Engine
+) -> None:
+    """--lessons on: the lessons block from lessons_block_v1.md is in the maker's first message,
+    not in the checker's; the trace and the case event carry the ids and the run digest still
+    verifies. Without lessons nothing changes."""
+    lesson = Lesson(id=41, text="Regular payroll to many staff accounts is not fan-out.")
+    asked: list[str] = []
+
+    def provider(case_id: str) -> list[Lesson]:
+        asked.append(case_id)
+        return [lesson]
+
+    alert_id = harness_samples.alert_id
+    script: list[ScriptItem] = [
+        tool_call_response([("get_alert", {"alert_id": alert_id})], id_prefix="a"),
+        _describe,
+        _submit,
+        APPROVE,
+    ]
+    adapter = ScriptedAdapter(script)
+    result = asyncio.run(
+        run_case(
+            alert_id,
+            AML_SPEC,
+            "scripted",
+            database_url=harness_test_url,
+            adapter=adapter,
+            lessons_provider=provider,
+        )
+    )
+    assert asked == [alert_id]
+    assert result.status == "proposed", result.reason
+    assert result.trace.lesson_ids == [41]
+    first = adapter.requests[0].messages[0].text()
+    assert first.startswith(build_case_message(alert_id))
+    assert "Lessons from past reviews" in first and f"- {lesson.text}" in first
+    checker_first = adapter.requests[-1].messages[0].text()
+    assert lesson.text not in checker_first
+    assert result.review is not None and result.review.trace.lesson_ids == []
+
+    plain, plain_adapter = _run(harness_test_url, alert_id, [_submit, APPROVE])
+    assert plain.trace.lesson_ids == []
+    assert plain_adapter.requests[0].messages[0].text() == build_case_message(alert_id)
+
+    profile = get_profile("scripted")
+    prompt = load_prompt(AML_SPEC.prompt)
+    with records_cleaned(harness_engine):
+        with harness_engine.connect() as conn:
+            with_id = record_case_result(conn, result, profile=profile, prompt=prompt)
+            plain_id = record_case_result(conn, plain, profile=profile, prompt=prompt)
+        with harness_engine.connect() as conn:
+            payloads: dict[str, Any] = dict(
+                conn.execute(
+                    select(CaseEvent.run_id, CaseEvent.payload).where(
+                        CaseEvent.run_id.in_([with_id, plain_id])
+                    )
+                ).all()
+            )
+            assert payloads[with_id]["lesson_ids"] == [41]
+            assert "lesson_ids" not in payloads[plain_id]
+            report = verify_chain(conn, check_runs=True)
+            assert report.ok, report

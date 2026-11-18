@@ -29,6 +29,7 @@ INVESTIGATOR_PROMPT = PromptRef(PROMPTS / "investigator_v3.md", "v3")
 CASE_MESSAGE_PROMPT = PromptRef(PROMPTS / "case_message_v1.md", "v1")
 REVIEWER_PROMPT = PromptRef(PROMPTS / "reviewer_v1.md", "v1")
 REVIEW_MESSAGE_PROMPT = PromptRef(PROMPTS / "review_message_v1.md", "v1")
+LESSONS_BLOCK_PROMPT = PromptRef(PROMPTS / "lessons_block_v1.md", "v1")
 
 
 def build_case_message(alert_id: str) -> str:
@@ -67,4 +68,5 @@ AML_SPEC = ModuleSpec(
     build_case_message=build_case_message,
     make_lookup_factory=make_aml_lookup_factory,
     reviewer=AML_REVIEWER,
+    lessons_template=LESSONS_BLOCK_PROMPT,
 )

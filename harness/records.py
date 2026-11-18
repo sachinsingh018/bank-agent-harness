@@ -306,6 +306,10 @@ def _event_payload(
     if result.findings is not None:
         for key in ("recommendation", "typology", "confidence"):
             payload[key] = result.findings.get(key)
+    if result.trace.lesson_ids:
+        # Lessons shown to the agent (harness.lessons). Only on runs that had lessons, so the
+        # agent_runs columns and run_digest stay as they were.
+        payload["lesson_ids"] = list(result.trace.lesson_ids)
     if review is not None:
         payload["review_verdict"] = review["verdict"]
         payload["review_digest"] = review_digest(review)

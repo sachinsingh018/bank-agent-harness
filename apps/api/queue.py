@@ -6,7 +6,9 @@ only writes are one decision event (approved, rejected or edited) in the append-
 log, through harness.records.append_case_event, plus an optional correction in the same
 transaction, and only when the server has a reviewer configured. Edited findings must pass the
 module's output model and deterministic verifiers first (apps/api/edits.py). Run detail and
-the queue also show the checker's review (maker-checker) from agent_reviews, read only.
+the queue also show the checker's review (maker-checker) from agent_reviews, read only, and run
+detail shows the saved lessons the agent was given (ids from the run's creation event, text
+from corrections).
 Errors are generic and never carry database details.
 """
 
@@ -35,7 +37,14 @@ from apps.api.deps import (
     valid_reviewer_name,
 )
 from apps.api.edits import FindingsEdits, check_edits
-from harness.db.records_models import AgentReview, AgentRun, CaseEvent, Correction, ModelCall
+from harness.db.records_models import (
+    AGENT_RUNNER_ACTOR,
+    AgentReview,
+    AgentRun,
+    CaseEvent,
+    Correction,
+    ModelCall,
+)
 from harness.db.session import DatabaseConnectionError
 from harness.records import CASE_EVENTS_LOCK_KEY, append_case_event
 from tools.aml.db import open_readonly
@@ -174,6 +183,13 @@ class ReviewOut(_Out):
     created_at: datetime
 
 
+class LessonOut(_Out):
+    """A saved lesson that was shown to the agent at the start of the run."""
+
+    id: int
+    text: str
+
+
 class RunDetail(_Out):
     run_id: str
     case_id: str
@@ -198,6 +214,7 @@ class RunDetail(_Out):
     not_fetched_txn_ids: list[int]  # cited, but over the lookup cap
     decision: DecisionInfo | None
     review: ReviewOut | None  # None when the checker did not run
+    lessons: list[LessonOut]  # lessons shown to the agent, in shown order; empty when none
 
 
 class DecisionRequest(BaseModel):
@@ -508,9 +525,29 @@ def _transfers(engine: Engine, txn_ids: list[int]) -> tuple[list[TransferRecord]
     return found, sorted(missing)
 
 
+def lesson_ids_of(events: list[Any]) -> list[int]:
+    """Lesson ids from the agent-runner event that created the run (empty when none)."""
+    for e in events:
+        if e.actor != AGENT_RUNNER_ACTOR or not isinstance(e.payload, dict):
+            continue
+        ids = e.payload.get("lesson_ids")
+        if isinstance(ids, list):
+            return [i for i in ids if isinstance(i, int) and not isinstance(i, bool)]
+        return []
+    return []
+
+
+def _lessons(conn: Connection, ids: list[int]) -> list[LessonOut]:
+    if not ids:
+        return []
+    rows = conn.execute(select(Correction.id, Correction.rule).where(Correction.id.in_(ids)))
+    text = {r.id: r.rule for r in rows}
+    return [LessonOut(id=i, text=text[i]) for i in ids if i in text]
+
+
 @router.get("/runs/{run_id}", response_model=RunDetail)
 def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunDetail:
-    def work() -> tuple[Any, list[Any], list[Any], Any]:
+    def work() -> tuple[Any, list[Any], list[Any], Any, list[LessonOut]]:
         with engine.connect() as conn:
             run = _load_run(conn, run_id)
             review = conn.execute(
@@ -522,9 +559,10 @@ def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunD
             events = conn.execute(
                 select(CaseEvent.__table__).where(CaseEvent.run_id == run_id).order_by(CaseEvent.id)
             ).all()
-            return run, list(calls), list(events), review
+            lessons = _lessons(conn, lesson_ids_of(list(events)))
+            return run, list(calls), list(events), review, lessons
 
-    run, calls, events, review = _safely(work)
+    run, calls, events, review, lessons = _safely(work)
     cited = cited_txn_ids(run.findings)
     fetch, not_fetched = cited[:MAX_CITED_LOOKUPS], cited[MAX_CITED_LOOKUPS:]
     transfers, missing = _safely(lambda: _transfers(tool_engine, fetch))
@@ -568,6 +606,7 @@ def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunD
         if decision is None
         else _decision_info(decision.event, decision.actor, decision.at, decision.payload),
         review=_review_out(review),
+        lessons=lessons,
     )
 
 
@@ -578,7 +617,7 @@ def list_corrections(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     cursor: Annotated[str | None, Query(max_length=400)] = None,
 ) -> CorrectionsPage:
-    """Saved lessons, newest first. Nothing in the agent reads them yet."""
+    """Saved lessons, newest first. Runs with --lessons on show some of them to the agent."""
     stmt = select(Correction.__table__)
     if cursor:
         at, raw_id = decode_cursor(cursor)

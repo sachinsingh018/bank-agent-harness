@@ -2,8 +2,9 @@
 
 A correction is written only by the human decision path (apps/api/queue.py), in the same
 transaction as its decision event, and the table is append-only. GET /corrections lives in
-queue.py with the other read endpoints. Nothing in the agent, the loop or the prompts reads
-corrections yet (docs/plans/edits-and-corrections.md). Rule text must not mention calendar
+queue.py with the other read endpoints. The agent never reads corrections itself: with
+--lessons on, the runner asks modules/aml/memory.py for a few of them and passes them to the
+loop as plain lessons (docs/plans/corrections-memory.md). Rule text must not mention calendar
 dates, month names or years (decision 0006).
 """
 

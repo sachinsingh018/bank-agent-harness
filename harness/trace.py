@@ -89,6 +89,8 @@ class RunTrace(_Strict):
     seen_txn_ids: list[int] = []
     # Paths unpacked from JSON-encoded strings in the last submission (harness.arg_repair).
     submission_repairs: list[str] = []
+    # Ids of the lessons added to the first user message (harness.lessons), in shown order.
+    lesson_ids: list[int] = []
     # Class name of the exception behind model_error, tool_failure, verifier_error or
     # internal_error. Never the message, which may hold request details.
     error_class: str | None = None

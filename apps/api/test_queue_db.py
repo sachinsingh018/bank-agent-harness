@@ -731,3 +731,32 @@ def test_detail_and_queue_show_the_checker_review(
     by_id = {i["run_id"]: i for i in items}
     assert by_id[run_id]["review_verdict"] == "reject"
     assert by_id[runs.escalate]["review_verdict"] is None
+
+
+def test_detail_shows_the_lessons_shown_to_the_agent(
+    client: TestClient, runs: Runs, records_engine: Engine
+) -> None:
+    response = client.post(
+        f"/runs/{runs.review}/decision",
+        json={
+            "decision": "reject",
+            "note": "no evidence",
+            "correction": {"kind": "evidence", "rule": "Check the counterparty first."},
+        },
+        headers=HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    lesson_id = response.json()["correction_id"]
+    case_id = f"T-{uuid.uuid4()}"
+    result = _proposed(case_id, runs.txns, "close")
+    trace = result.trace.model_copy(update={"lesson_ids": [lesson_id, 999_999_999]})
+    result = result.model_copy(update={"trace": trace})
+    with records_engine.connect() as conn:
+        run_id = record_case_result(
+            conn, result, profile=get_profile("scripted"), prompt=load_prompt(AML_SPEC.prompt)
+        )
+    body = client.get(f"/runs/{run_id}").json()
+    # The unknown id is left out; the known one comes with its rule text.
+    assert body["lessons"] == [{"id": lesson_id, "text": "Check the counterparty first."}]
+    assert body["events"][0]["payload"]["lesson_ids"] == [lesson_id, 999_999_999]
+    assert client.get(f"/runs/{runs.escalate}").json()["lessons"] == []

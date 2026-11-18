@@ -7,6 +7,7 @@ local test URL for the call."""
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
@@ -32,6 +33,7 @@ from modules.aml.rules.registry import run_all
 from modules.aml.rules.ruleset import V1
 from modules.aml.store import delete_alerts_for_version, write_alerts
 from tests_support.aml_db import local_url
+from tests_support.lessons_db import save_correction
 from tests_support.records_db import records_cleaned
 
 EVAL_VERSION = "test-evals-agent"
@@ -419,3 +421,71 @@ def test_record_run_copies_a_run_dir_into_the_records_tables(
                 select(func.count()).where(AgentRun.eval_run_id == eval_run_id)
             ).scalar_one()
         assert again == 2
+
+
+def test_runner_with_lessons_on_shows_lessons_and_the_scorer_warns(
+    local_engine: Engine,
+    eval_alert_ids: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """--lessons on with a saved correction: the case trace carries the lesson id, the manifest
+    names its source alert, and the scorer warns because that source is in the scored dataset
+    file (the run itself only runs the first alert)."""
+    url = local_url()
+    source = f"T-lesson-src-{uuid.uuid4().hex[:8]}"
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            {
+                "alert_ids": [eval_alert_ids[0], source],
+                "created_by": "test",
+                "dataset": "test",
+                "ruleset_version": EVAL_VERSION,
+                "split_seed": 42,
+                "version": "v0",
+            }
+        )
+    )
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("HARNESS_WRITE_DATABASE_URL", url)
+    with records_cleaned(local_engine):
+        lesson_id = save_correction(local_engine, source, "Payroll to many staff is not fan-out.")
+        code = run_aml_agent.main(
+            [
+                "--dataset",
+                str(dataset),
+                "--profile",
+                "scripted",
+                "--limit",
+                "1",
+                "--no-review",
+                "--out-dir",
+                str(tmp_path / "runs"),
+                "--lessons",
+                "on",
+            ]
+        )
+        stdout = capfd.readouterr().out
+        assert code == 0, stdout
+        assert "cases with lessons: 1" in stdout
+        run_dir = Path(stdout.strip().splitlines()[-1].removeprefix("run_dir="))
+        result = json.loads((run_dir / "results.jsonl").read_text().splitlines()[0])
+        assert lesson_id in result["trace"]["lesson_ids"]
+        first = result["trace"]["messages"][0]["blocks"][0]["text"]
+        assert "Payroll to many staff is not fan-out." in first
+        manifest = json.loads((run_dir / "manifest.json").read_text())
+        block = manifest["lessons"]
+        assert block["enabled"] is True and block["cases_with_lessons"] == 1
+        assert block["sources"][str(lesson_id)] == source
+        assert block["template"]["version"] == "v1"
+        assert block["excluded_source_datasets"] == ["evals/datasets/aml_alerts_heldout_v1.json"]
+
+        code = aml_agent_score.main(["--run", str(run_dir)])
+        stdout = capfd.readouterr().out
+        assert code == 0, stdout
+        assert "warning:" in stdout
+        report = json.loads((run_dir / "score.json").read_text())
+        assert lesson_id in report["lessons"]["same_dataset_lesson_ids"]
+        assert source not in json.dumps(report)

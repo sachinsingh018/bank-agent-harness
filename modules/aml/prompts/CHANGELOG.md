@@ -7,3 +7,7 @@
 # AML reviewer (checker) prompt changelog
 
 - reviewer_v1: first checker prompt for maker-checker. A senior analyst checklist (evidence supports the recommendation, ordinary explanation ruled out, typology matches the structure, confidence fits the evidence, no overstated claims), a 6 tool call budget, and approve only if the findings would hold up. review_message_v1 shows the alert id and the maker's findings as JSON. Not yet measured with a real model (docs/plans/maker-checker.md).
+
+# AML lessons block changelog
+
+- lessons_block_v1: the block added to the first user message when a run uses lessons (runner flag --lessons on, off by default). It lists up to 5 saved reviewer lessons from other alerts and says they are general guidance, not evidence about this alert. Not yet measured with a real model (docs/plans/corrections-memory.md).

@@ -31,6 +31,7 @@ CHECKED = (
     "module_spec.py",
     "prompts.py",
     "trace.py",
+    "lessons.py",
 )
 
 
@@ -137,9 +138,10 @@ CORRECTIONS_WORD = re.compile(r"\bcorrections?\b", re.IGNORECASE)
 
 
 def test_agent_side_never_mentions_the_corrections_table() -> None:
-    """Corrections are stored but not used by the agent yet (docs/plans/edits-and-corrections.md):
-    no harness file outside harness/db/, and no file in modules/aml/agent/, imports the
-    Correction model or mentions the corrections table."""
+    """The agent never reads corrections itself (docs/plans/corrections-memory.md): no harness
+    file outside harness/db/ (runner.py and loop.py included), and no file in
+    modules/aml/agent/, imports the Correction model or mentions the corrections table. The
+    runner gets plain lessons from a provider the caller passes in."""
     db_dir = HARNESS / "db"
     files = [p for p in _code(HARNESS) if db_dir not in p.parents]
     files += _code(ROOT / "modules" / "aml" / "agent")
@@ -152,3 +154,39 @@ def test_agent_side_never_mentions_the_corrections_table() -> None:
             if name.endswith(".Correction"):
                 offenders.append(f"{path.relative_to(ROOT)}: {name}")
     assert not offenders, "\n".join(offenders)
+
+
+MEMORY = ROOT / "modules" / "aml" / "memory.py"
+
+
+def test_only_the_memory_provider_and_the_api_read_the_corrections_table() -> None:
+    """Besides harness/db/ and apps/api, modules/aml/memory.py is the one non-test file that
+    imports the Correction model."""
+    readers = set()
+    for top in ("harness", "modules", "evals", "tools", "apps", "data", "migrations"):
+        for path in _code(ROOT / top):
+            if (HARNESS / "db") in path.parents or (ROOT / "apps" / "api") in path.parents:
+                continue
+            if any(n.endswith(".Correction") for n in _imports_with_names(path)):
+                readers.add(path)
+    assert readers == {MEMORY}
+
+
+def test_agent_side_cannot_reach_the_memory_provider() -> None:
+    """No harness file, nothing in modules/aml/agent/ and nothing in tools/ imports
+    modules.aml.memory. Only the eval runner wires it in."""
+    files = _code(HARNESS) + _code(ROOT / "modules" / "aml" / "agent") + _code(ROOT / "tools")
+    offenders = [
+        f"{p.relative_to(ROOT)}: {name}"
+        for p in files
+        for name in _imports_with_names(p)
+        if name == "modules.aml.memory" or name.startswith("modules.aml.memory.")
+    ]
+    assert not offenders, "\n".join(offenders)
+    importers = {
+        p
+        for top in ("harness", "modules", "evals", "tools", "apps", "data", "migrations")
+        for p in _code(ROOT / top)
+        if any(n.startswith("modules.aml.memory") for n in _imports_with_names(p))
+    }
+    assert importers == {ROOT / "evals" / "run_aml_agent.py"}

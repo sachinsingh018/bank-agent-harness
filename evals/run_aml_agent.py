@@ -3,7 +3,7 @@
 Usage (from the repo root):
     uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v2.json \
         --profile scripted [--limit N] [--concurrency 1] [--out-dir evals/runs] [--allow-remote]
-        [--record] [--no-review] [--reviewer-profile NAME]
+        [--record] [--no-review] [--reviewer-profile NAME] [--lessons on|off]
 
 Writes evals/runs/<run_id>/results.jsonl (one CaseResult per line) and manifest.json. The
 agent stays read-only: this script writes files only, never the database. The database URL
@@ -19,6 +19,14 @@ that could not be recorded makes the script exit 1 after the run.
 Maker-checker is on by default: every proposed case goes to the checker, with the same profile
 unless --reviewer-profile is given. --no-review turns it off for ablations. The manifest's
 "review" block records whether it was on and which profile and prompt the checker used.
+
+Corrections memory (--lessons on, off by default): before each case the runner asks
+modules/aml/memory.py for up to 5 saved reviewer lessons and the loop adds them to the first
+user message (lessons_block_v1.md). Corrections are read through HARNESS_WRITE_DATABASE_URL in
+read-only transactions (same local-only check) and alert detectors through DATABASE_URL. The
+alert being run and every alert of the held-out dataset (HELDOUT_DATASET) are never lesson
+sources. The manifest's "lessons" block records whether it was on and the source alert of
+each lesson used, and each trace records the lesson ids.
 
 Cases that end in human review are a valid outcome (exit code 0). Only setup errors exit
 non-zero. The last stdout line is run_dir=<path>, so CI can pick it up.
@@ -54,6 +62,7 @@ from harness.db.session import (
     is_local_url,
     run_safely,
 )
+from harness.lessons import LessonsProvider
 from harness.models.config import ModelProfile, Provider, get_profile
 from harness.models.factory import make_adapter
 from harness.models.types import ModelAdapter
@@ -67,7 +76,14 @@ from harness.records import (
 )
 from harness.runner import run_case
 from harness.trace import CaseResult
-from modules.aml.agent.spec import AML_SPEC, CASE_MESSAGE_PROMPT, REVIEW_MESSAGE_PROMPT
+from modules.aml.agent.spec import (
+    AML_SPEC,
+    CASE_MESSAGE_PROMPT,
+    LESSONS_BLOCK_PROMPT,
+    REVIEW_MESSAGE_PROMPT,
+)
+from modules.aml.memory import AmlLessonsProvider
+from tools.aml.db import build_tool_engine
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "evals" / "runs"
@@ -80,6 +96,8 @@ API_KEY_ENV: dict[Provider, str | None] = {
 }
 RESULTS_FILE = "results.jsonl"
 MANIFEST_FILE = "manifest.json"
+# Alerts of this dataset never feed lessons into any run (eval honesty, decision 0005).
+HELDOUT_DATASET = REPO_ROOT / "evals" / "datasets" / "aml_alerts_heldout_v1.json"
 
 
 class SetupError(Exception):
@@ -204,6 +222,49 @@ def review_block(review: ReviewSetup) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class LessonsSetup:
+    """Corrections memory for a run. provider is None when lessons are off. sources is filled
+    by the provider as it hands out lessons (lesson id -> source alert id)."""
+
+    provider: LessonsProvider | None = None
+    sources: dict[int, str] | None = None
+    excluded_datasets: tuple[str, ...] = ()
+
+    @property
+    def enabled(self) -> bool:
+        return self.provider is not None
+
+
+def heldout_alert_ids(path: Path = HELDOUT_DATASET) -> frozenset[str]:
+    return frozenset(load_dataset(path).body.alert_ids)
+
+
+def make_lessons_setup(records_engine: Engine, data_engine: Engine) -> LessonsSetup:
+    """The AML provider with every held-out alert excluded as a lesson source."""
+    provider = AmlLessonsProvider(records_engine, data_engine, heldout_alert_ids())
+    return LessonsSetup(
+        provider=provider,
+        sources=provider.sources,
+        excluded_datasets=(_relative(HELDOUT_DATASET),),
+    )
+
+
+def lessons_block(lessons: LessonsSetup, results: Sequence[CaseResult]) -> dict[str, Any]:
+    if not lessons.enabled:
+        return {"enabled": False}
+    used = sorted({i for r in results for i in r.trace.lesson_ids})
+    sources = lessons.sources or {}
+    return {
+        "enabled": True,
+        "template": _prompt_info(load_prompt(LESSONS_BLOCK_PROMPT)),
+        "excluded_source_datasets": list(lessons.excluded_datasets),
+        "cases_with_lessons": sum(1 for r in results if r.trace.lesson_ids),
+        # lesson id (as a JSON key) -> the alert the lesson was saved on
+        "sources": {str(i): sources[i] for i in used if i in sources},
+    }
+
+
 def _review_counts(results: Sequence[CaseResult]) -> dict[str, int]:
     verdicts = Counter(
         "failed" if r.review.verdict is None else r.review.verdict
@@ -225,6 +286,7 @@ def build_manifest(
     results: Sequence[CaseResult],
     concurrency: int,
     review: ReviewSetup | None = None,
+    lessons: LessonsSetup | None = None,
 ) -> dict[str, Any]:
     prompt = load_prompt(AML_SPEC.prompt)
     case_prompt = load_prompt(CASE_MESSAGE_PROMPT)
@@ -243,6 +305,7 @@ def build_manifest(
         "model": {"profile": profile.name, "provider": profile.provider, "model": profile.model},
         "limits": limits.model_dump(),
         "review": review_block(review),
+        "lessons": lessons_block(lessons if lessons is not None else LessonsSetup(), results),
         "concurrency": concurrency,
         "dataset": {
             "name": dataset.body.dataset,
@@ -308,8 +371,10 @@ async def _run_all(
     results_path: Path,
     recorder: CaseRecorder | None = None,
     review: ReviewSetup | None = None,
+    lessons: LessonsSetup | None = None,
 ) -> list[CaseResult]:
     review = review if review is not None else ReviewSetup(profile=None)
+    provider = None if lessons is None else lessons.provider
     gate = asyncio.Semaphore(concurrency)
     results: list[CaseResult] = []
     with results_path.open("w", encoding="utf-8") as out:
@@ -330,6 +395,7 @@ async def _run_all(
                     if review.profile is None
                     else make_run_adapter(review.profile),
                     reviewer_limits=review.limits,
+                    lessons_provider=provider,
                 )
             out.write(result.model_dump_json() + "\n")
             out.flush()
@@ -353,11 +419,14 @@ def run_dataset(
     review: bool = True,
     reviewer_profile_name: str | None = None,
     reviewer_limits: HarnessLimits | None = None,
+    lessons: LessonsSetup | None = None,
 ) -> Path:
     """Run every alert of the dataset and return the run directory. The caller has already
     checked the database targets. With record_engine, the run is also written to the records
     tables and the manifest gets a "records" block with the recorded and failed case counts.
-    review=False turns the checker off; reviewer_profile_name defaults to profile_name."""
+    review=False turns the checker off; reviewer_profile_name defaults to profile_name.
+    lessons (default off) turns corrections memory on for every case."""
+    lessons = lessons if lessons is not None else LessonsSetup()
     if concurrency < 1:
         raise SetupError("--concurrency must be at least 1")
     if limit is not None and limit < 1:
@@ -401,6 +470,7 @@ def run_dataset(
             results=[],
             concurrency=concurrency,
             review=setup,
+            lessons=lessons,
         )
         start["counts"] = None
         start["total_cost_usd"] = None
@@ -430,6 +500,7 @@ def run_dataset(
             run_dir / RESULTS_FILE,
             recorder,
             setup,
+            lessons,
         )
     )
     manifest = build_manifest(
@@ -443,6 +514,7 @@ def run_dataset(
         results=results,
         concurrency=concurrency,
         review=setup,
+        lessons=lessons,
     )
     if record_engine is not None and recorder is not None:
         engine = record_engine
@@ -493,6 +565,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="model profile for the checker (default: the same as --profile)",
     )
+    parser.add_argument(
+        "--lessons",
+        choices=("on", "off"),
+        default="off",
+        help=f"show saved reviewer lessons to the agent (reads them through {WRITE_URL_ENV})",
+    )
     return parser
 
 
@@ -505,16 +583,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(target_text(url))
         check_target(url, args.allow_remote)
         record_engine: Engine | None = None
-        if args.record:
+        write_engine: Engine | None = None
+        data_engine: Engine | None = None
+        lessons = LessonsSetup()
+        if args.record or args.lessons == "on":
+            flag = "--record" if args.record else "--lessons on"
             write_url = os.environ.get(WRITE_URL_ENV)
             if not write_url:
-                raise SetupError(f"--record needs {WRITE_URL_ENV} to be set")
+                raise SetupError(f"{flag} needs {WRITE_URL_ENV} to be set")
             print("write " + target_text(write_url))
             check_target(write_url, args.allow_remote, WRITE_URL_ENV)
             try:
-                record_engine = get_write_engine(allow_remote=args.allow_remote)
+                write_engine = get_write_engine(allow_remote=args.allow_remote)
             except (DatabaseConnectionError, RuntimeError) as exc:
                 raise SetupError(str(exc)) from None
+        if args.record:
+            record_engine = write_engine
+        if args.lessons == "on":
+            assert write_engine is not None
+            try:
+                data_engine = build_tool_engine(url)
+            except DatabaseConnectionError as exc:
+                raise SetupError(str(exc)) from None
+            lessons = make_lessons_setup(write_engine, data_engine)
         try:
             run_dir = run_dataset(
                 args.dataset,
@@ -526,10 +617,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 record_engine=record_engine,
                 review=not args.no_review,
                 reviewer_profile_name=args.reviewer_profile,
+                lessons=lessons,
             )
         finally:
-            if record_engine is not None:
-                record_engine.dispose()
+            for engine in (write_engine, data_engine):
+                if engine is not None:
+                    engine.dispose()
     except SetupError as exc:
         print(f"error: {exc}")
         return 2
@@ -541,6 +634,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"review verdicts: {counts['by_review_verdict']}, "
         f"cost usd: {manifest['total_cost_usd']}"
     )
+    if manifest["lessons"]["enabled"]:
+        print(f"cases with lessons: {manifest['lessons']['cases_with_lessons']}")
     records = manifest.get("records")
     code = 0
     if records is not None:

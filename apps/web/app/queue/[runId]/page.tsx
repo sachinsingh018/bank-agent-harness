@@ -375,6 +375,7 @@ export default async function CasePage({
 
   const findings = readFindings(run.findings);
   const byId = new Map(run.cited_transfers.map((t) => [t.txn_id, t]));
+  const lessons = run.lessons ?? [];
   const missing = new Set(run.missing_txn_ids);
   const notice = outcome ? OUTCOME_TEXT[outcome] : undefined;
 
@@ -494,6 +495,23 @@ export default async function CasePage({
         <p className="notice warn">
           {run.not_fetched_txn_ids.length} cited transfers were not fetched (lookup limit).
         </p>
+      )}
+
+      {lessons.length > 0 && (
+        <>
+          <h2>Lessons shown to the agent</h2>
+          <p className="muted">
+            Saved by reviewers on earlier, different cases. Shown as general guidance, not as
+            evidence about this case.
+          </p>
+          <ul>
+            {lessons.map((lesson) => (
+              <li key={lesson.id}>
+                {lesson.text} <span className="muted mono">(lesson {lesson.id})</span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <h2>Verifier results</h2>
