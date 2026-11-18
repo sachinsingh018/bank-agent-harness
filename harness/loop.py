@@ -48,6 +48,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from harness.arg_repair import unpack_json_strings
 from harness.config import HarnessLimits, effective_max_output_tokens
 from harness.mcp_client import OutcomeCode, ToolErrorPayload, ToolOutcome
 from harness.models.config import ModelProfile, cost_usd
@@ -209,6 +210,7 @@ class _Run:
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     tool_results: list[ToolResultContent] = field(default_factory=list)
     error_class: str | None = None
+    submission_repairs: list[str] = field(default_factory=list)
 
     # ---- the loop -------------------------------------------------------------------------
 
@@ -331,6 +333,8 @@ class _Run:
         duration_ms: int = 0,
         truncated: bool = False,
         repeat: bool = False,
+        arguments: dict[str, Any] | None = None,
+        arg_repairs: list[str] | None = None,
     ) -> None:
         index = len(self.tool_calls)
         self.tool_calls.append(
@@ -338,7 +342,7 @@ class _Run:
                 index=index,
                 step=step,
                 name=call.name,
-                arguments=call.arguments,
+                arguments=call.arguments if arguments is None else arguments,
                 ok=ok,
                 error_code=error_code,
                 duration_ms=duration_ms,
@@ -346,6 +350,7 @@ class _Run:
                 truncated=truncated,
                 repeat=repeat,
                 content_sha256=_sha256(content),
+                arg_repairs=list(arg_repairs or []),
             )
         )
         if self.keep_tool_content:
@@ -361,14 +366,24 @@ class _Run:
                 call, step=step, content=content, ok=False, error_code="invalid_argument"
             )
             return ToolResultBlock(tool_call_id=call.id, content=content, is_error=True)
-        key = (call.name, json.dumps(call.arguments, sort_keys=True))
+        arguments, repairs = self._repair(call)
+        key = (call.name, json.dumps(arguments, sort_keys=True))
         cached = self.cache.get(key)
         if cached is not None:
             first_content, ok, code = cached
             content = REPEAT_NOTE + first_content
-            self._record_tool(call, step=step, content=content, ok=ok, error_code=code, repeat=True)
+            self._record_tool(
+                call,
+                step=step,
+                content=content,
+                ok=ok,
+                error_code=code,
+                repeat=True,
+                arguments=arguments,
+                arg_repairs=repairs,
+            )
             return ToolResultBlock(tool_call_id=call.id, content=content, is_error=not ok)
-        outcome = await self.tools.call(call.name, call.arguments)
+        outcome = await self.tools.call(call.name, arguments)
         self._record_tool(
             call,
             step=step,
@@ -377,6 +392,8 @@ class _Run:
             error_code=outcome.error_code,
             duration_ms=outcome.duration_ms,
             truncated=outcome.truncated,
+            arguments=arguments,
+            arg_repairs=repairs,
         )
         if outcome.session_dead:
             raise _Finish("tool_failure")
@@ -386,6 +403,16 @@ class _Run:
         return ToolResultBlock(
             tool_call_id=call.id, content=outcome.content, is_error=not outcome.ok
         )
+
+    def _repair(self, call: ToolCallBlock) -> tuple[dict[str, Any], list[str]]:
+        """Unpack JSON-encoded list or object strings the tool's schema expects. Unknown tools
+        are left alone (the session reports them)."""
+        schema = next((t.input_schema for t in self.tools.tools if t.name == call.name), None)
+        if schema is None:
+            return call.arguments, []
+        repaired, repairs = unpack_json_strings(call.arguments, schema)
+        assert isinstance(repaired, dict)
+        return repaired, repairs
 
     # ---- submission -----------------------------------------------------------------------
 
@@ -401,8 +428,13 @@ class _Run:
         elif submits[0].parse_error is not None:
             errors = [PARSE_ERROR_MESSAGE]
         else:
+            # Unpacking JSON-encoded strings is not a retry; the paths go on the trace.
+            arguments, repairs = unpack_json_strings(
+                submits[0].arguments, self.spec.submit_tool.input_schema
+            )
+            self.submission_repairs = repairs
             try:
-                output = self.spec.output_model.model_validate(submits[0].arguments)
+                output = self.spec.output_model.model_validate(arguments)
             except ValidationError as exc:
                 errors = validation_messages(exc)
             else:
@@ -500,6 +532,7 @@ class _Run:
             retry_reason=self.retry_reason,
             seen_txn_ids=sorted(self.seen),
             error_class=self.error_class,
+            submission_repairs=self.submission_repairs,
         )
         wall_ms = max(0, int((self.clock() - self.start) * 1000))
         return CaseResult(

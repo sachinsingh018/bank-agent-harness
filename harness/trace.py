@@ -63,6 +63,8 @@ class ToolCallRecord(_Strict):
     truncated: bool
     repeat: bool
     content_sha256: str
+    # Paths of JSON-encoded string arguments unpacked before the call (harness.arg_repair).
+    arg_repairs: list[str] = []
 
 
 class ToolResultContent(_Strict):
@@ -82,6 +84,8 @@ class RunTrace(_Strict):
     retry_used: bool = False
     retry_reason: RetryReason | None = None
     seen_txn_ids: list[int] = []
+    # Paths unpacked from JSON-encoded strings in the last submission (harness.arg_repair).
+    submission_repairs: list[str] = []
     # Class name of the exception behind model_error, tool_failure, verifier_error or
     # internal_error. Never the message, which may hold request details.
     error_class: str | None = None

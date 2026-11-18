@@ -3,6 +3,7 @@
 The output model and verifier are defined here, so the harness stays module agnostic."""
 
 import asyncio
+import dataclasses
 import json
 import threading
 import time
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 import harness.loop as loop_module
 from harness.config import HarnessLimits
+from harness.json_schema import portable_schema
 from harness.loop import REPEAT_NOTE, collect_txn_ids, run_agent, txn_ids_in_content
 from harness.mcp_client import ToolOutcome
 from harness.models.scripted_adapter import (
@@ -83,6 +85,40 @@ def _spec(verifiers: Sequence[SeenVerifier] = (SeenVerifier(),)) -> ModuleSpec:
 
 
 PROMPT = LoadedPrompt(text="system prompt", version="v1", path="p_v1.md", sha256="abc")
+
+
+class Item(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    amounts: list[int]
+
+
+class Report(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    narrative: str
+    claims: list[Item]
+
+
+class AlwaysPass:
+    name = "always"
+
+    def check(self, output: BaseModel, ctx: VerifyContext) -> VerifierResult:
+        return VerifierResult(name=self.name, passed=True, errors=[])
+
+
+def _report_spec() -> ModuleSpec:
+    return dataclasses.replace(
+        _spec(),
+        output_model=Report,
+        submit_tool=ToolSpec(
+            name=SUBMIT,
+            description="submit",
+            input_schema=portable_schema(Report.model_json_schema()),
+        ),
+        verifiers=(AlwaysPass(),),
+    )
 
 
 def _ok(data: Any) -> ToolOutcome:
@@ -756,3 +792,46 @@ def test_duplicate_call_ids_are_model_error_and_run_nothing() -> None:
     result, _, fake = _run([dup])
     assert result.status == "human_review" and result.reason == "model_error"
     assert fake.calls == [] and result.tool_steps == 0
+
+
+# ---- JSON-encoded string arguments --------------------------------------------------------
+
+
+def test_claims_sent_as_json_string_are_unpacked_and_proposed() -> None:
+    claims = [{"text": "t", "amounts": [1, 2]}]
+    submit = (SUBMIT, {"narrative": "[note] n", "claims": json.dumps(claims)})
+    result, _, _ = _run([tool_call_response([submit])], spec=_report_spec())
+    assert result.status == "proposed"
+    assert result.findings == {"narrative": "[note] n", "claims": claims}
+    assert result.trace.submission_repairs == ["claims"]
+    assert not result.trace.retry_used
+
+
+def test_invalid_json_claims_still_fail_validation() -> None:
+    bad = (SUBMIT, {"narrative": "n", "claims": '[{"text": '})
+    script = [tool_call_response([bad], id_prefix="a"), tool_call_response([bad], id_prefix="b")]
+    result, _, _ = _run(script, spec=_report_spec())
+    assert result.status == "human_review" and result.reason == "schema_failed"
+    assert result.trace.submission_repairs == []
+
+
+def test_tool_call_txn_ids_string_is_unpacked_before_the_session() -> None:
+    fake = FakeTools()
+    fake.tools[0] = ToolSpec(
+        name="lookup",
+        description="d",
+        input_schema={
+            "type": "object",
+            "properties": {"txn_ids": {"type": "array", "items": {"type": "integer"}}},
+        },
+    )
+    script = [
+        tool_call_response([_call("lookup", txn_ids="[7, 8]")], id_prefix="a"),
+        tool_call_response([_submit()], id_prefix="b"),
+    ]
+    result, _, fake = _run(script, tools=fake)
+    assert fake.calls == [("lookup", {"txn_ids": [7, 8]})]
+    record = result.trace.tool_calls[0]
+    assert record.arg_repairs == ["txn_ids"]
+    assert record.arguments == {"txn_ids": [7, 8]}
+    assert result.trace.tool_calls[-1].arg_repairs == []
