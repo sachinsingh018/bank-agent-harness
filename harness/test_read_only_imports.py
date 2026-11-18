@@ -32,6 +32,7 @@ CHECKED = (
     "prompts.py",
     "trace.py",
     "lessons.py",
+    "tracing.py",
 )
 
 

@@ -160,6 +160,8 @@ export interface RunDetail {
   // Saved reviewer lessons shown to the agent at the start of the run. Optional so the page
   // still works against an API from before corrections memory.
   lessons?: LessonOut[];
+  // Langfuse trace id when the run was traced. Optional for APIs from before tracing.
+  trace_id?: string | null;
 }
 
 export interface FindingsEdits {

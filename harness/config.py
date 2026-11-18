@@ -1,5 +1,6 @@
 """Load agent loop limits from config/harness.toml: [limits] for the investigating agent (the
-maker) and [reviewer] for the checker in maker-checker."""
+maker) and [reviewer] for the checker in maker-checker. [tracing] holds the Langfuse switches
+(harness/tracing.py)."""
 
 from __future__ import annotations
 
@@ -22,11 +23,22 @@ class HarnessLimits(BaseModel):
     max_output_tokens_per_call: int = Field(default=16_000, gt=0)
 
 
+class TracingConfig(BaseModel):
+    """enabled turns Langfuse tracing on when its env vars are set. Eval runs trace every case;
+    routine runs trace a deterministic sample_routine share of cases."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    sample_routine: float = Field(default=0.1, ge=0, le=1)
+
+
 class _HarnessFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     limits: HarnessLimits
     reviewer: HarnessLimits | None = None
+    tracing: TracingConfig = TracingConfig()
 
 
 def _load(path: Path) -> _HarnessFile:
@@ -42,6 +54,10 @@ def load_reviewer_limits(path: Path = DEFAULT_HARNESS_PATH) -> HarnessLimits:
     """Limits for the checker run. Without a [reviewer] section the maker's limits apply."""
     loaded = _load(path)
     return loaded.reviewer if loaded.reviewer is not None else loaded.limits
+
+
+def load_tracing(path: Path = DEFAULT_HARNESS_PATH) -> TracingConfig:
+    return _load(path).tracing
 
 
 def effective_max_output_tokens(limits: HarnessLimits, profile: ModelProfile) -> int:

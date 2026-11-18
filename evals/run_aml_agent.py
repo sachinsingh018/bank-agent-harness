@@ -3,7 +3,7 @@
 Usage (from the repo root):
     uv run python -m evals.run_aml_agent --dataset evals/datasets/aml_alerts_smoke_v2.json \
         --profile scripted [--limit N] [--concurrency 1] [--out-dir evals/runs] [--allow-remote]
-        [--record] [--no-review] [--reviewer-profile NAME] [--lessons on|off]
+        [--record] [--no-review] [--reviewer-profile NAME] [--lessons on|off] [--no-trace]
 
 Writes evals/runs/<run_id>/results.jsonl (one CaseResult per line) and manifest.json. The
 agent stays read-only: this script writes files only, never the database. The database URL
@@ -27,6 +27,11 @@ read-only transactions (same local-only check) and alert detectors through DATAB
 alert being run and every alert of the held-out dataset (HELDOUT_DATASET) are never lesson
 sources. The manifest's "lessons" block records whether it was on and the source alert of
 each lesson used, and each trace records the lesson ids.
+
+Tracing: when [tracing] enabled is true in config/harness.toml and LANGFUSE_PUBLIC_KEY,
+LANGFUSE_SECRET_KEY and LANGFUSE_HOST are set, every case is sent to Langfuse as one trace
+(harness/tracing.py), labelled with the run id and dataset. --no-trace turns it off. The
+manifest's "tracing" block records whether it was on and the host (never the keys).
 
 Cases that end in human review are a valid outcome (exit code 0). Only setup errors exit
 non-zero. The last stdout line is run_dir=<path>, so CI can pick it up.
@@ -54,7 +59,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Engine
 
 from evals.scripted_policy import ScriptedAmlPolicy
-from harness.config import HarnessLimits, load_limits, load_reviewer_limits
+from harness.config import HarnessLimits, load_limits, load_reviewer_limits, load_tracing
 from harness.db.session import (
     LOCAL_HOSTS,
     REDIRECT_QUERY_KEYS,
@@ -76,6 +81,7 @@ from harness.records import (
 )
 from harness.runner import run_case
 from harness.trace import CaseResult
+from harness.tracing import NOOP_TRACER, NoopTracer, Tracer, safe_tracer, tracer_from_env
 from modules.aml.agent.spec import (
     AML_SPEC,
     CASE_MESSAGE_PROMPT,
@@ -265,6 +271,16 @@ def lessons_block(lessons: LessonsSetup, results: Sequence[CaseResult]) -> dict[
     }
 
 
+def tracing_block(tracer: Tracer) -> dict[str, Any]:
+    if isinstance(tracer, NoopTracer):
+        return {"enabled": False, "host": None}
+    return {"enabled": True, "host": tracer.host}
+
+
+def _dataset_label(dataset: LoadedDataset) -> str:
+    return f"{dataset.body.dataset}@{dataset.body.version}"
+
+
 def _review_counts(results: Sequence[CaseResult]) -> dict[str, int]:
     verdicts = Counter(
         "failed" if r.review.verdict is None else r.review.verdict
@@ -287,6 +303,7 @@ def build_manifest(
     concurrency: int,
     review: ReviewSetup | None = None,
     lessons: LessonsSetup | None = None,
+    tracer: Tracer = NOOP_TRACER,
 ) -> dict[str, Any]:
     prompt = load_prompt(AML_SPEC.prompt)
     case_prompt = load_prompt(CASE_MESSAGE_PROMPT)
@@ -306,6 +323,7 @@ def build_manifest(
         "limits": limits.model_dump(),
         "review": review_block(review),
         "lessons": lessons_block(lessons if lessons is not None else LessonsSetup(), results),
+        "tracing": tracing_block(tracer),
         "concurrency": concurrency,
         "dataset": {
             "name": dataset.body.dataset,
@@ -372,6 +390,9 @@ async def _run_all(
     recorder: CaseRecorder | None = None,
     review: ReviewSetup | None = None,
     lessons: LessonsSetup | None = None,
+    tracer: Tracer = NOOP_TRACER,
+    eval_run_id: str | None = None,
+    dataset: str | None = None,
 ) -> list[CaseResult]:
     review = review if review is not None else ReviewSetup(profile=None)
     provider = None if lessons is None else lessons.provider
@@ -396,6 +417,9 @@ async def _run_all(
                     else make_run_adapter(review.profile),
                     reviewer_limits=review.limits,
                     lessons_provider=provider,
+                    tracer=tracer,
+                    eval_run_id=eval_run_id,
+                    dataset=dataset,
                 )
             out.write(result.model_dump_json() + "\n")
             out.flush()
@@ -420,13 +444,16 @@ def run_dataset(
     reviewer_profile_name: str | None = None,
     reviewer_limits: HarnessLimits | None = None,
     lessons: LessonsSetup | None = None,
+    tracer: Tracer = NOOP_TRACER,
 ) -> Path:
     """Run every alert of the dataset and return the run directory. The caller has already
     checked the database targets. With record_engine, the run is also written to the records
     tables and the manifest gets a "records" block with the recorded and failed case counts.
     review=False turns the checker off; reviewer_profile_name defaults to profile_name.
-    lessons (default off) turns corrections memory on for every case."""
+    lessons (default off) turns corrections memory on for every case. tracer (default: no
+    tracing) traces every case and is flushed once at the end."""
     lessons = lessons if lessons is not None else LessonsSetup()
+    tracer = safe_tracer(tracer)
     if concurrency < 1:
         raise SetupError("--concurrency must be at least 1")
     if limit is not None and limit < 1:
@@ -471,6 +498,7 @@ def run_dataset(
             concurrency=concurrency,
             review=setup,
             lessons=lessons,
+            tracer=tracer,
         )
         start["counts"] = None
         start["total_cost_usd"] = None
@@ -490,19 +518,25 @@ def run_dataset(
             eval_run_id=run_id,
             trace_path=f"{_relative(run_dir)}/{RESULTS_FILE}",
         )
-    results = asyncio.run(
-        _run_all(
-            alert_ids,
-            profile,
-            database_url,
-            limits,
-            concurrency,
-            run_dir / RESULTS_FILE,
-            recorder,
-            setup,
-            lessons,
+    try:
+        results = asyncio.run(
+            _run_all(
+                alert_ids,
+                profile,
+                database_url,
+                limits,
+                concurrency,
+                run_dir / RESULTS_FILE,
+                recorder,
+                setup,
+                lessons,
+                tracer,
+                run_id,
+                _dataset_label(dataset),
+            )
         )
-    )
+    finally:
+        tracer.flush()
     manifest = build_manifest(
         run_id=run_id,
         dataset=dataset,
@@ -515,6 +549,7 @@ def run_dataset(
         concurrency=concurrency,
         review=setup,
         lessons=lessons,
+        tracer=tracer,
     )
     if record_engine is not None and recorder is not None:
         engine = record_engine
@@ -571,6 +606,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="off",
         help=f"show saved reviewer lessons to the agent (reads them through {WRITE_URL_ENV})",
     )
+    parser.add_argument("--no-trace", action="store_true", help="do not send this run to Langfuse")
     return parser
 
 
@@ -606,6 +642,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             except DatabaseConnectionError as exc:
                 raise SetupError(str(exc)) from None
             lessons = make_lessons_setup(write_engine, data_engine)
+        tracer = tracer_from_env(load_tracing().enabled and not args.no_trace)
+        print("tracing: on" if not isinstance(tracer, NoopTracer) else "tracing: off")
         try:
             run_dir = run_dataset(
                 args.dataset,
@@ -618,6 +656,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 review=not args.no_review,
                 reviewer_profile_name=args.reviewer_profile,
                 lessons=lessons,
+                tracer=tracer,
             )
         finally:
             for engine in (write_engine, data_engine):

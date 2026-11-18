@@ -28,6 +28,10 @@ A verifier that raises (for example a database error) is an infrastructure failu
 check failure: the retry is not spent and the case ends as human_review verifier_error, with
 the exception class in the trace.
 
+Tracing (harness/tracing.py): every model call, tool call and verifier run is also sent to the
+run's tracer, wrapped so a tracing failure can never change the outcome. The default tracer
+does nothing; the caller (runner or checker) starts and ends the trace.
+
 A module with zero verifiers never gets a proposal: a valid submission then ends as
 human_review internal_error, because a proposal must always be verified output and an empty
 verifier list is a wiring mistake, not evidence that the answer is correct.
@@ -74,6 +78,7 @@ from harness.trace import (
     ToolCallRecord,
     ToolResultContent,
 )
+from harness.tracing import NOOP_RUN, RunTracer, safe_run
 from harness.verifiers.base import (
     VerifierResult,
     VerifierRun,
@@ -198,6 +203,7 @@ class _Run:
     clock: Callable[[], float]
     keep_tool_content: bool
     lessons: tuple[Lesson, ...] = ()
+    tracer: RunTracer = NOOP_RUN
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     start: float = 0.0
     messages: list[Message] = field(default_factory=list)
@@ -251,20 +257,20 @@ class _Run:
             call_cost = cost_usd(self.profile, response.usage)
             self.totals = self.totals + response.usage
             self.cost += call_cost
-            self.model_calls.append(
-                ModelCallRecord(
-                    index=len(self.model_calls),
-                    provider=response.provider,
-                    model=response.model,
-                    prompt_version=self.prompt.version,
-                    prompt_sha256=self.prompt.sha256,
-                    usage=response.usage,
-                    cost_usd=str(call_cost),
-                    latency_ms=response.latency_ms,
-                    stop_reason=response.stop_reason,
-                    request_id=response.request_id,
-                )
+            record = ModelCallRecord(
+                index=len(self.model_calls),
+                provider=response.provider,
+                model=response.model,
+                prompt_version=self.prompt.version,
+                prompt_sha256=self.prompt.sha256,
+                usage=response.usage,
+                cost_usd=str(call_cost),
+                latency_ms=response.latency_ms,
+                stop_reason=response.stop_reason,
+                request_id=response.request_id,
             )
+            self.model_calls.append(record)
+            self.tracer.model_call(record, request, response.message)
             self.messages.append(response.message)
             self._check_tokens()
             stop = response.stop_reason
@@ -352,22 +358,22 @@ class _Run:
         arg_repairs: list[str] | None = None,
     ) -> None:
         index = len(self.tool_calls)
-        self.tool_calls.append(
-            ToolCallRecord(
-                index=index,
-                step=step,
-                name=call.name,
-                arguments=call.arguments if arguments is None else arguments,
-                ok=ok,
-                error_code=error_code,
-                duration_ms=duration_ms,
-                size=len(content),
-                truncated=truncated,
-                repeat=repeat,
-                content_sha256=_sha256(content),
-                arg_repairs=list(arg_repairs or []),
-            )
+        record = ToolCallRecord(
+            index=index,
+            step=step,
+            name=call.name,
+            arguments=call.arguments if arguments is None else arguments,
+            ok=ok,
+            error_code=error_code,
+            duration_ms=duration_ms,
+            size=len(content),
+            truncated=truncated,
+            repeat=repeat,
+            content_sha256=_sha256(content),
+            arg_repairs=list(arg_repairs or []),
         )
+        self.tool_calls.append(record)
+        self.tracer.tool_call(record, content)
         if self.keep_tool_content:
             self.tool_results.append(ToolResultContent(index=index, content=content))
 
@@ -460,6 +466,7 @@ class _Run:
                     raise _Finish("internal_error", findings, [])
                 verified = await self._verify(output, submits[0])
                 verifier_results = verified.results
+                self.tracer.verifiers(verifier_results)
                 if self.clock() - self.start >= self.limits.max_wall_seconds:
                     self._record_tool(
                         submits[0], step=None, content="", ok=False, error_code="timeout"
@@ -549,6 +556,7 @@ class _Run:
             error_class=self.error_class,
             submission_repairs=self.submission_repairs,
             lesson_ids=self.lesson_ids,
+            trace_id=self.tracer.trace_id,
         )
         wall_ms = max(0, int((self.clock() - self.start) * 1000))
         return CaseResult(
@@ -578,13 +586,15 @@ async def run_agent(
     clock: Callable[[], float] = time.monotonic,
     keep_tool_content: bool = True,
     lessons: Sequence[Lesson] = (),
+    tracer: RunTracer = NOOP_RUN,
 ) -> CaseResult:
     """Run one case. Returns proposed only for a valid submission that passes every verifier;
     every other ending is human_review with the partial trace.
 
     verify_context_factory returns the module's read-only lookup for VerifyContext. lessons,
     when not empty, are rendered through spec.lessons_template and added to the first user
-    message; their ids go on the trace."""
+    message; their ids go on the trace. tracer receives every model call, tool call and
+    verifier run (it is not ended here); its trace id goes on the trace."""
     run = _Run(
         case_id=case_id,
         spec=spec,
@@ -597,5 +607,6 @@ async def run_agent(
         clock=clock,
         keep_tool_content=keep_tool_content,
         lessons=tuple(lessons),
+        tracer=safe_run(tracer),
     )
     return await run.run()

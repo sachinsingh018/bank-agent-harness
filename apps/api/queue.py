@@ -215,6 +215,7 @@ class RunDetail(_Out):
     decision: DecisionInfo | None
     review: ReviewOut | None  # None when the checker did not run
     lessons: list[LessonOut]  # lessons shown to the agent, in shown order; empty when none
+    trace_id: str | None  # Langfuse trace id when the run was traced
 
 
 class DecisionRequest(BaseModel):
@@ -537,6 +538,15 @@ def lesson_ids_of(events: list[Any]) -> list[int]:
     return []
 
 
+def trace_id_of(events: list[Any]) -> str | None:
+    """The Langfuse trace id from the agent-runner event that created the run, if any."""
+    for e in events:
+        if e.actor == AGENT_RUNNER_ACTOR and isinstance(e.payload, dict):
+            value = e.payload.get("trace_id")
+            return value if isinstance(value, str) else None
+    return None
+
+
 def _lessons(conn: Connection, ids: list[int]) -> list[LessonOut]:
     if not ids:
         return []
@@ -607,6 +617,7 @@ def get_run(run_id: str, engine: RecordsEngine, tool_engine: ToolEngine) -> RunD
         else _decision_info(decision.event, decision.actor, decision.at, decision.payload),
         review=_review_out(review),
         lessons=lessons,
+        trace_id=trace_id_of(list(events)),
     )
 
 

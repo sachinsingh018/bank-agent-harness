@@ -9,6 +9,8 @@ maker. The harness reads only the review's verdict field:
     failure -> human_review reviewer_failed (limit, schema, model error, missing verdict)
 
 A rejection or failure never closes anything. The checker writes nowhere, like the maker.
+When the case is traced, the checker's run is a "review" child span of the case trace, with its
+own model calls, tool calls and verifier results (harness/tracing.py).
 Plan: docs/plans/maker-checker.md.
 """
 
@@ -27,6 +29,7 @@ from harness.models.types import ModelAdapter
 from harness.module_spec import VERDICT_FIELD, ModuleSpec, ReviewerSpec
 from harness.prompts import load_prompt
 from harness.trace import CaseResult, HumanReviewReason, ReviewOutcome, ReviewVerdict
+from harness.tracing import NOOP_RUN, RunEnd, RunTracer, safe_run
 
 VERDICTS: tuple[ReviewVerdict, ...] = ("approve", "reject")
 
@@ -65,13 +68,16 @@ async def run_review(
     verify_context_factory: LookupFactory,
     clock: Callable[[], float] = time.monotonic,
     keep_tool_content: bool = True,
+    tracer: RunTracer = NOOP_RUN,
 ) -> ReviewOutcome:
     """Run the checker on a proposed maker result. Never raises for a checker problem: every
-    failure is a ReviewOutcome with a failure_reason."""
+    failure is a ReviewOutcome with a failure_reason. tracer is the case's tracer: the checker
+    gets its own child span under it, ended here."""
     reviewer = spec.reviewer
     if reviewer is None or maker.status != "proposed" or maker.findings is None:
         raise ValueError("only a proposed result of a module with a reviewer is reviewed")
     prompt = load_prompt(reviewer.prompt)
+    span = safe_run(tracer).start_review(profile.name, prompt.version, prompt.sha256)
     try:
         cspec = checker_spec(spec, reviewer, maker.findings)
     except Exception as exc:  # a broken reviewer wiring still ends in human review
@@ -90,11 +96,23 @@ async def run_review(
             verify_context_factory=verify_context_factory,
             clock=clock,
             keep_tool_content=keep_tool_content,
+            tracer=span,
         )
     verdict = _verdict(result) if result.status == "proposed" else None
     failure: HumanReviewReason | None = None
     if verdict is None:
         failure = result.reason if result.reason is not None else "internal_error"
+    span.end(
+        RunEnd(
+            status=verdict or "failed",
+            reason=failure,
+            totals=result.totals,
+            cost_usd=result.cost_usd,
+            tool_steps=result.tool_steps,
+            wall_ms=result.wall_ms,
+            error_class=result.trace.error_class,
+        )
+    )
     return ReviewOutcome(
         verdict=verdict,
         failure_reason=failure,

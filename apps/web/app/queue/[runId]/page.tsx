@@ -437,6 +437,14 @@ export default async function CasePage({
             {(run.wall_ms / 1000).toFixed(1)} s, ${run.cost_usd}
           </dd>
         </div>
+        {run.trace_id ? (
+          <div>
+            <dt>Langfuse trace</dt>
+            <dd>
+              <code>{run.trace_id}</code>
+            </dd>
+          </div>
+        ) : null}
       </dl>
 
       <h2>Reviewer</h2>

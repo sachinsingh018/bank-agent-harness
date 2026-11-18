@@ -15,3 +15,10 @@ max_tool_steps = 6
 max_total_tokens = 300000
 max_wall_seconds = 300
 max_output_tokens_per_call = 16000
+
+# Langfuse tracing (harness/tracing.py). Only active when LANGFUSE_PUBLIC_KEY,
+# LANGFUSE_SECRET_KEY and LANGFUSE_HOST are set. Eval runs trace every case; routine runs
+# trace a deterministic share (hash of case id and run id) to stay within the free tier.
+[tracing]
+enabled = true
+sample_routine = 0.1

@@ -310,6 +310,9 @@ def _event_payload(
         # Lessons shown to the agent (harness.lessons). Only on runs that had lessons, so the
         # agent_runs columns and run_digest stay as they were.
         payload["lesson_ids"] = list(result.trace.lesson_ids)
+    if result.trace.trace_id is not None:
+        # Langfuse trace id (harness.tracing). Only on traced runs, like lesson_ids.
+        payload["trace_id"] = result.trace.trace_id
     if review is not None:
         payload["review_verdict"] = review["verdict"]
         payload["review_digest"] = review_digest(review)

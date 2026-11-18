@@ -94,6 +94,8 @@ class RunTrace(_Strict):
     # Class name of the exception behind model_error, tool_failure, verifier_error or
     # internal_error. Never the message, which may hold request details.
     error_class: str | None = None
+    # Langfuse trace id when the run was traced (harness/tracing.py), else None.
+    trace_id: str | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:
