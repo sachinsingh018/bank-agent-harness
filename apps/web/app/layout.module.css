@@ -1,0 +1,10 @@
+/* The GitHub icon link at the end of the header nav: a 24 px tap target around a 20 px mark. */
+
+.navIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-width: 24px;
+  min-height: 24px;
+}

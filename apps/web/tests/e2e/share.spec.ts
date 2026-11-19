@@ -3,13 +3,13 @@ import { expect, test } from "@playwright/test";
 import { firstRunId } from "./bundle";
 
 const EMAIL =
-  "mailto:sachinsingh018@gmail.com?subject=Bank%20agent%20harness%20demo%20request";
+  "mailto:sachinsingh018@gmail.com?subject=Bank%20agent%20harness";
 const LINKEDIN = "https://www.linkedin.com/in/sac108";
 
 for (const url of ["/", "/about"]) {
   test(`contact links on ${url}`, async ({ page }) => {
     await page.goto(url);
-    const contact = page.getByRole("region", { name: "Want to try it with your own data?" });
+    const contact = page.getByRole("region", { name: "Get in touch" });
     await expect(contact.getByRole("link", { name: "Email me" })).toHaveAttribute("href", EMAIL);
     await expect(contact.getByRole("link", { name: /LinkedIn/ })).toHaveAttribute(
       "href",

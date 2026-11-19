@@ -3,18 +3,18 @@
 
 import styles from "./contact.module.css";
 
-const EMAIL = "mailto:sachinsingh018@gmail.com?subject=Bank%20agent%20harness%20demo%20request";
+const EMAIL = "mailto:sachinsingh018@gmail.com?subject=Bank%20agent%20harness";
 const LINKEDIN = "https://www.linkedin.com/in/sac108";
 
 export function Contact() {
   return (
     <section className={styles.contact} aria-labelledby="contact-title">
       <h2 id="contact-title" className={styles.title}>
-        Want to try it with your own data?
+        Get in touch
       </h2>
       <p className={styles.text}>
-        Tell me which alert types or case work your team handles, and I will walk you through
-        how the harness could run on them.
+        Questions about how this was built, or a role you think fits? Email me or message me on
+        LinkedIn.
       </p>
       <p className={styles.actions}>
         <a href={EMAIL} className="button-link primary">

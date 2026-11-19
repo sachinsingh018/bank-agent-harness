@@ -1,0 +1,49 @@
+/* Inline definition: a dotted underline on the word, a small ruled card under it when open. */
+
+.wrap {
+  position: relative;
+  display: inline;
+}
+
+.word {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: help;
+  text-decoration: underline dotted var(--intaglio);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+}
+
+.word:hover {
+  color: var(--intaglio);
+}
+
+.tip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 5;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.65rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-panel);
+  box-shadow: 3px 3px 0 var(--rule);
+  font-size: var(--size-meta);
+  font-weight: 400;
+  font-stretch: 100%;
+  font-variation-settings: "wdth" 100;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.tip[hidden] {
+  display: none;
+}
