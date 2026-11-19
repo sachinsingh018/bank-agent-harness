@@ -92,3 +92,17 @@ test("no WCAG A or AA violations on the replay in explore mode and the case file
   results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(results.violations).toEqual([]);
 });
+
+test("guided mode waits for play under reduced motion", async ({ browser }) => {
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await page.goto(`/watch/${firstRunId()}`);
+  const counter = page.locator(".counter");
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  await page.waitForTimeout(6_000);
+  await expect(counter).toHaveText(/^Step 1 of \d+$/);
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(counter).toHaveText(/^Step 2 of \d+$/, { timeout: 10_000 });
+  await context.close();
+});

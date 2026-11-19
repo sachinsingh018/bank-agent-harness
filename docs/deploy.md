@@ -83,14 +83,40 @@ In the Vercel dashboard, open the project for this repo.
    `https://<render url>` (no slash at the end), for Production.
 3. Do NOT set `REVIEWER_TOKEN` or `WEB_DECISIONS_ENABLED`. If either one is there, delete it.
 4. Deployments, the latest one, Redeploy (env var changes only apply after a redeploy).
+5. Nothing to set for share images: Vercel provides `VERCEL_PROJECT_PRODUCTION_URL` itself, and
+   the app uses it as the base URL of its Open Graph images.
 
 ## 4. Check the site
 
-1. Open the Render `/health` URL first to wake the API, and wait until it answers.
-2. Open `https://<vercel url>/queue`. You should see the banner "Demo in replay mode: browse
-   recorded cases. Decisions are disabled." and the recorded cases under the All tab.
-3. Open one case: narrative, claims with cited transfers, verifier results, model calls and the
-   audit trail should show. The decision form should say decisions are disabled.
-4. Open `/corrections`. An empty list is fine.
-5. If a page says "The API is waking up", wait a minute and reload.
+The public site runs in bundle mode: it reads the recorded runs committed in
+`apps/web/content/showcase/v1` and needs no API. `SHOWCASE_SOURCE` picks the data source: unset
+(or anything other than `api`) means bundle mode, which is what Vercel uses; `SHOWCASE_SOURCE=api`
+is for local development against a running API (set it in `apps/web/.env.local`, which is
+gitignored). In bundle mode `/`, `/watch`, every `/watch/<run id>`, `/results` and `/about` are
+built as static pages, and the API only pages (`/queue`, `/evals`, `/lessons`) are hidden from
+the menu and return "not found". `API_BASE_URL` can stay set or be removed; the public pages never
+call it.
+
+1. Open `https://<vercel url>/`. Every page shows the banner "Replay mode: you can browse
+   recorded cases, checks and eval results. Decisions are off, so nothing here changes any data."
+2. Check the landing preview, the counts headline and the contact links ("Email me" and
+   "Message me on LinkedIn").
+3. Open `/watch`, then one case: the guided tour plays, Explore steps with the arrow keys, and the
+   Case file tab shows the checks and the audit trail without a decision form.
+4. Open `/results` and `/about`. Nothing should say "The API is waking up": if it does, the
+   deployment is not in bundle mode.
+5. Paste the site URL and one `/watch/<run id>` URL into a link preview checker (or a chat
+   message) to see the share image and title.
 6. Share the Vercel URL.
+
+To refresh the recorded runs (for example after new decisions in the local queue), re-export the
+bundle from the local database, never from Neon, then rebuild and check:
+
+```bash
+python -m evals.export_showcase --database-url <local database url> \
+  --export-date <YYYY-MM-DD> --git-commit <short sha> --out apps/web/content/showcase/v1
+cd apps/web && npm run build 2>&1 | tee build-output.txt && npm run check:static && npx playwright test
+```
+
+Commit the new bundle (decision 0008 and `data/README.md` describe what it may contain), and
+Vercel rebuilds the site on push.

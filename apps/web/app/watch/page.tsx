@@ -4,13 +4,14 @@ import { Suspense } from "react";
 import type { ShowcaseItem } from "../../lib/api";
 import { getShowcase } from "../../lib/data";
 import { loadErrorText } from "../../lib/errors";
+import { pageMeta } from "../../lib/meta";
 import { isBundleMode } from "../../lib/source";
 import { Gallery, GalleryFromUrl } from "./gallery";
 
-export const metadata: Metadata = {
-  title: "Watch an investigation | Alert desk",
-  description: "Pick a recorded money laundering alert and watch the agent investigate it.",
-};
+export const metadata: Metadata = pageMeta(
+  "Watch an investigation | Alert desk",
+  "Pick a recorded money laundering alert and watch the agent investigate it, step by step.",
+);
 
 export default async function WatchGallery() {
   let items: ShowcaseItem[] = [];

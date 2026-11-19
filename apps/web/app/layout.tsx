@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { webDecisionsEnabled } from "../lib/flags";
+import { pageMeta, SITE_DESCRIPTION, SITE_NAME, siteUrl } from "../lib/meta";
 import { isBundleMode } from "../lib/source";
 import "./globals.css";
 
@@ -16,9 +17,8 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "Alert desk",
-  description:
-    "An AML alert desk: an AI agent investigates, a second agent reviews, a person decides.",
+  ...pageMeta(SITE_NAME, SITE_DESCRIPTION),
+  metadataBase: siteUrl(),
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

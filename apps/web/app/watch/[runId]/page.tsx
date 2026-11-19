@@ -9,6 +9,7 @@ import type { BundleRun } from "../../../lib/bundle-types";
 import { getRun, getRunSteps, listBundleRunIds } from "../../../lib/data";
 import { loadErrorText } from "../../../lib/errors";
 import { isValidRunId } from "../../../lib/flags";
+import { pageMeta, runDescription, runTitle, SITE_DESCRIPTION } from "../../../lib/meta";
 import { formatSeconds, formatUsd } from "../../../lib/format";
 import { modelLabel, patternLabel } from "../../../lib/replay";
 import { isBundleMode } from "../../../lib/source";
@@ -16,9 +17,22 @@ import { CaseFileView } from "./case-file-view";
 import { ProvenanceStrip } from "./provenance";
 import { Replay, StepFromUrl, type ReviewSummary } from "./replay";
 
-export const metadata: Metadata = {
-  title: "Watch an investigation | Alert desk",
-};
+/** Title and description name the alert pattern and how the case ended. */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ runId: string }>;
+}): Promise<Metadata> {
+  const { runId } = await params;
+  let run: RunSteps | null = null;
+  try {
+    run = isValidRunId(runId) ? await getRunSteps(runId) : null;
+  } catch {
+    run = null; // the page itself shows the load error
+  }
+  if (!run) return pageMeta("Watch an investigation | Alert desk", SITE_DESCRIPTION);
+  return pageMeta(runTitle(run), runDescription(run));
+}
 
 /** Seconds for short runs, minutes for long ones. */
 function duration(ms: number): string {

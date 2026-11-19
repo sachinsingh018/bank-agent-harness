@@ -31,3 +31,5 @@ Finance terms, added as they come up.
 - **Strict truth:** this project's rule for calling an alert real: at least half of its transfers must be labelled as laundering. A looser rule (any one laundering transfer) would count many more alerts as real.
 - **Rules baseline:** what the monitoring rules achieve on their own, used as the yardstick for the agent. Rules escalate every alert they raise, so they never close a real case but leave every false alarm to a person.
 - **Development and held-out alerts:** development alerts are the ones looked at while improving prompts; held-out alerts are kept aside and only used for a final, fairer test. Scores on development alerts can be optimistic.
+- **Intaglio:** the engraved printing used for banknotes and share certificates: ink sits in fine cut lines, so it feels raised. The site's green accent and its favicon and share images borrow the look.
+- **Guilloche:** the fine, interlaced wave patterns printed on banknotes and cheques to make copying hard. The site uses a guilloche line as a section break and on its share images.

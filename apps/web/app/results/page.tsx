@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getResults } from "../../lib/data";
+import { pageMeta } from "../../lib/meta";
 import {
   humanReviewView,
   REVIEW_REASONS,
@@ -15,10 +16,10 @@ import { CountBar } from "../_ui/count-bar";
 import { Guilloche } from "../_ui/guilloche";
 import styles from "./results.module.css";
 
-export const metadata: Metadata = {
-  title: "Results | Alert desk",
-  description: "How the agent did on recorded development alerts, in plain counts.",
-};
+export const metadata: Metadata = pageMeta(
+  "Results | Alert desk",
+  "How the agent did on recorded development alerts, in plain counts: the false alarms it would close next to the real cases it would also close.",
+);
 
 function escalated(o: Outcome): number {
   return o.realTotal - o.realClosed + (o.falseTotal - o.falseClosed);

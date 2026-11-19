@@ -14,6 +14,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -52,6 +53,23 @@ const SPEEDS: { key: SpeedKey; label: string; factor: number }[] = [
 
 /** Steps where the cited or looked-up transfers are worth marking on the board. */
 const HIGHLIGHT_KINDS: ReplayStep["kind"][] = ["tool_call", "checks", "outcome"];
+
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  const query = window.matchMedia(REDUCED_MOTION);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+/** True when the visitor asks for less motion. False on the server and in the first render. */
+function useReducedMotion(): boolean {
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    () => window.matchMedia(REDUCED_MOTION).matches,
+    () => false,
+  );
+}
 
 /** At most this many transfer chips per step; the rest are counted. */
 const MAX_CHIPS = 12;
@@ -529,6 +547,9 @@ export function Replay({
   const [tab, setTab] = useState<Tab>("replay");
   const [index, setIndex] = useState(Math.max(0, Math.min(last, initialStep)));
   const [playing, setPlaying] = useState(initialMode === "guided");
+  // With reduced motion the guided tour waits until the visitor presses play.
+  const reduced = useReducedMotion();
+  const [started, setStarted] = useState(false);
   const [speed, setSpeed] = useState<SpeedKey>("normal");
   const [claim, setClaim] = useState<number | null>(null);
   const [hoverTxns, setHoverTxns] = useState<number[] | null>(null);
@@ -540,7 +561,8 @@ export function Replay({
   const moved = useRef(false);
 
   const atEnd = index >= last;
-  const running = playing && !atEnd && tab === "replay";
+  const held = reduced && !started;
+  const running = playing && !held && !atEnd && tab === "replay";
   const step = steps[index];
   const factor = SPEEDS.find((s) => s.key === speed)?.factor ?? 1;
   const delays = guidedDelays(steps.map((s) => s.kind));
@@ -566,15 +588,17 @@ export function Replay({
   );
 
   const toggle = useCallback(() => {
+    setStarted(true);
     if (atEnd) {
       go(0);
       setPlaying(true);
       return;
     }
-    setPlaying((p) => !p);
-  }, [atEnd, go]);
+    setPlaying(!running);
+  }, [atEnd, go, running]);
 
   const restart = useCallback(() => {
+    setStarted(true);
     go(0);
     setPlaying(true);
   }, [go]);
@@ -911,8 +935,10 @@ export function Replay({
       </div>
       {mode === "guided" && tab === "replay" && (
         <p className={`meta ${styles.modeNote}`}>
-          Guided tour: the whole run in about a minute. Pause any time, or switch to Explore to
-          step through it yourself.
+          Guided tour: the whole run in about a minute.{" "}
+          {held
+            ? "It waits for you because your device asks for less motion: press Play to start."
+            : "Pause any time, or switch to Explore to step through it yourself."}
         </p>
       )}
       <div

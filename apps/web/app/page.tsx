@@ -1,12 +1,20 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import type { RunSteps } from "../lib/api";
 import { getManifest, getResults, getRunSteps, getShowcase } from "../lib/data";
+import { pageMeta, SITE_DESCRIPTION } from "../lib/meta";
 import { patternLabel, pickFeatured } from "../lib/replay";
 import { splitView } from "../lib/results-view";
+import { Contact } from "./_ui/contact";
 import { CountBar } from "./_ui/count-bar";
 import { Preview, type PreviewStep } from "./_ui/preview";
 import styles from "./page.module.css";
+
+export const metadata: Metadata = pageMeta(
+  "Alert desk: watch an AI agent investigate a money laundering alert",
+  SITE_DESCRIPTION,
+);
 
 // The mini-replay plays the whole featured run, up to this many steps.
 const PREVIEW_STEPS = 16;
@@ -139,6 +147,8 @@ export default async function Home() {
           </span>
         </li>
       </ol>
+
+      <Contact />
     </div>
   );
 }

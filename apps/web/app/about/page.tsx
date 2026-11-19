@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { pageMeta } from "../../lib/meta";
 import { Attribution } from "../_ui/attribution";
+import { Contact } from "../_ui/contact";
 import { Guilloche } from "../_ui/guilloche";
 import { HarnessDiagram } from "../_ui/harness-diagram";
 import styles from "./about.module.css";
 
-export const metadata: Metadata = {
-  title: "How it works | Alert desk",
-  description:
-    "The harness around the agent: read-only tools, checks in code, a reviewer agent, human approval, an audit trail, tracing and evals.",
-};
+export const metadata: Metadata = pageMeta(
+  "How it works | Alert desk",
+  "The harness around the agent: read-only tools, checks in code, a reviewer agent, human approval, an audit trail, tracing and evals.",
+);
 
 export default function AboutPage() {
   return (
@@ -91,6 +92,7 @@ export default function AboutPage() {
 
       <Guilloche />
       <Attribution />
+      <Contact />
     </>
   );
 }
