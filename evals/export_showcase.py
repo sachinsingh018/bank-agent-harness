@@ -73,60 +73,62 @@ class Curated:
 
 STORIES: tuple[Story, ...] = (
     Story("prompt-versions", "One alert, four prompt versions"),
-    Story("other-detectors", "Catches on other detectors"),
+    Story("other-detectors", "True positives across other scenarios"),
 )
 
 # The gallery, in order. Labels and captions are written by hand from the stored runs.
 CURATED: tuple[Curated, ...] = (
     Curated(
         "f7eb0d02-e996-4921-9278-1762e0e5ed03",
-        "Caught",
-        "Prompt v1 proposed to escalate this fan-out alert at confidence 0.85.",
+        "True positive, escalated",
+        "Prompt v1 recommended escalating this fan-out alert at confidence 0.85.",
         "prompt-versions",
     ),
     Curated(
         "823c8309-3f1d-465e-8b70-5ffb4fe19909",
-        "Caught faster",
-        "Prompt v2 proposed to escalate the same alert at 0.75, in about 73 seconds against "
-        "187 for v1.",
+        "True positive, escalated faster",
+        "Prompt v2 recommended escalating the same alert at confidence 0.75, in about 73 "
+        "seconds against 187 for v1.",
         "prompt-versions",
     ),
     Curated(
         "29c00e8b-abe7-4fd9-80a1-1f920c492ab0",
-        "Missed",
-        "Prompt v3 proposed to close the same alert at 0.15, so it missed a real case.",
+        "False negative, closed",
+        "Prompt v3 recommended closing the same alert at confidence 0.15. The alert is a true "
+        "positive, so this is a false negative.",
         "prompt-versions",
     ),
     Curated(
         "e75bcdb8-6779-4261-afed-3e70f759a2ff",
-        "Sent to a person",
-        "Prompt v5 also proposed to close it at 0.15, as v4 did. The reviewer agent ran out "
-        "of time, so the case went to a person.",
+        "Routed to analyst review",
+        "Prompt v5 also recommended closing it at confidence 0.15, as v4 did. The reviewer "
+        "agent hit its time limit, so the case was routed to analyst review.",
         "prompt-versions",
     ),
     Curated(
         "029a419f-6e72-4ef8-85da-25a6fe1d5e8e",
-        "Caught",
-        "Prompt v3 proposed to escalate this scatter-gather alert at 0.9.",
+        "True positive, escalated",
+        "Prompt v3 recommended escalating this scatter-gather alert at confidence 0.9.",
         "other-detectors",
     ),
     Curated(
         "20be587f-cbd0-4b2c-ad74-fbee69513bb5",
-        "Caught",
-        "Prompt v3 proposed to escalate this fan-in alert at 0.75.",
+        "True positive, escalated",
+        "Prompt v3 recommended escalating this fan-in alert at confidence 0.75.",
         "other-detectors",
     ),
     Curated(
         "70353513-1255-4b6f-aba7-267c3402dd6e",
-        "False alert closed",
-        "Prompt v3 proposed to close this cycle alert at 0.15. It was a false alert.",
+        "False positive, cleared",
+        "Prompt v3 recommended closing this cycle alert at confidence 0.15. The ground truth "
+        "labels it a false positive.",
         None,
     ),
     Curated(
         "61e56e79-9dd9-4115-8172-36e7775ddc24",
-        "Checks sent it to a person",
-        "The findings failed the deterministic checks after one retry, so the case went to "
-        "a person.",
+        "Failed validation, routed to analyst",
+        "The findings failed the deterministic checks after one retry, so the case was routed "
+        "to analyst review.",
         None,
     ),
 )
@@ -415,10 +417,10 @@ def build_results(sources: Sources) -> dict[str, Any]:
             "false_strict": alerts["false_strict"],
         }
         notes = [
-            "Truth is strict: an alert counts as real only when at least half of its "
+            "Truth is strict: an alert counts as a true positive only when at least half of its "
             "transfers are laundering.",
-            "Cases the agent sent to a person count as escalated, because a person looks at them.",
-            "These are development alerts only. The prompts were improved while looking at them.",
+            "Cases routed to analyst review count as escalated, because an analyst works them.",
+            "These are development alerts only. The prompts were tuned on them.",
             "There is no run on the held-out alerts yet, so these numbers may be optimistic.",
             f"The model is a free model ({model}), so the cost per case was $0.",
             f"In this synthetic dataset most transfers after {cutoff} are laundering, so late "

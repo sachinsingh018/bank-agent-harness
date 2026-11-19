@@ -111,7 +111,7 @@ export function rulesContext(results: Results): RulesContext | null {
   };
 }
 
-/** Plain words for the reasons a case went to a person. Unknown keys show as recorded. */
+/** Plain words for the reasons a case was routed to analyst review. Unknown keys show as recorded. */
 export const REVIEW_REASONS: Record<string, string> = {
   verifier_failed: "failed the deterministic checks after one retry",
   limit_steps: "ran out of steps before answering",

@@ -159,7 +159,7 @@ export function Gallery({
 
       {items.length > 0 && shown.length === 0 && (
         <p className="notice">
-          No cases match these filters. <Link href="/watch">Show all cases</Link>.
+          No cases match these filters. <Link href="/watch">Show all</Link>.
         </p>
       )}
 

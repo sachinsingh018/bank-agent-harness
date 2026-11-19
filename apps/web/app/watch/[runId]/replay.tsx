@@ -2,7 +2,7 @@
 
 // The replay, in two modes. Guided plays the whole run in about a minute with a caption per
 // step; Explore is free stepping with back, next, a scrubber and a speed control. Steps sit on
-// the left, the evidence board on the right, where the money-flow diagram grows as the tools
+// the left, the transaction network on the right, where the money-flow diagram grows as the tools
 // return data. A second tab shows the case file, rendered on the server. Keyboard: left and
 // right arrows step, space plays or pauses, Home and End jump. Every step summary is written by
 // deterministic code from the recorded run, never by the model.
@@ -154,7 +154,7 @@ function ClaimList({
           >
             <span className="statement">{c.statement}</span>
             <span className="meta">
-              {selected === i ? "Shown on the board" : "Show on the board"}: {c.txn_ids.length}{" "}
+              {selected === i ? "Shown in the network" : "Show in the network"}: {c.txn_ids.length}{" "}
               transfer{c.txn_ids.length === 1 ? "" : "s"} cited
             </span>
           </button>
@@ -212,7 +212,7 @@ function TechDetails({ step, effort }: { step: ReplayStep; effort: RunEffort | n
       : effortFor(effort, step.index).tool;
   const args = step.arguments && Object.keys(step.arguments).length > 0 ? step.arguments : null;
   const rawLabel =
-    step.tool === "submit_findings" ? "Exact answer it handed in" : RAW_LABELS[step.kind];
+    step.tool === "submit_findings" ? "Exact findings submitted" : RAW_LABELS[step.kind];
   const raw = step.raw && rawLabel ? step.raw : null;
   if (!step.tool && !raw && !model) return null;
   return (
@@ -349,7 +349,7 @@ function Verdict({ outcome, reached }: { outcome: ReplayStep | undefined; reache
   const kind = saysKind(outcome.recommendation, outcome.status ?? "human_review");
   return (
     <div className="board-verdict reveal">
-      <p className="meta">Agent says</p>
+      <p className="meta">Agent recommendation</p>
       <div className="line">
         <p className={`word condensed word-${kind}`}>
           <span className={`mark ${kind}`} aria-hidden="true" />
@@ -363,10 +363,10 @@ function Verdict({ outcome, reached }: { outcome: ReplayStep | undefined; reache
       {outcome.status === "human_review" ? (
         <p className="board-route word-review">
           <span className="mark review" aria-hidden="true" />
-          Sent to a person: {reasonLabel(outcome.reason)}
+          Routed to analyst review: {reasonLabel(outcome.reason)}
         </p>
       ) : (
-        <p className="board-route">Proposed. A person approves or rejects it.</p>
+        <p className="board-route">Recommended. An analyst approves or rejects it.</p>
       )}
     </div>
   );
@@ -490,8 +490,8 @@ function EndPanel({
         {caseLink && (
           <Link href={`/queue/${encodeURIComponent(run.run_id)}`}>Open the full case</Link>
         )}
-        <Link href="/about">How it works</Link>
-        <Link href="/watch">Watch another case</Link>
+        <Link href="/about">Methodology</Link>
+        <Link href="/watch">Open another case</Link>
       </p>
     </section>
   );
@@ -839,9 +839,9 @@ export function Replay({
           )}
         </section>
 
-        <aside className="board" aria-label="Evidence board">
+        <aside className="board" aria-label="Transaction network">
           <div className="board-head">
-            <h2>Evidence board</h2>
+            <h2>Transaction network</h2>
             <p className="meta">
               {visible.nodes} account{visible.nodes === 1 ? "" : "s"}, {visible.edges} money
               link{visible.edges === 1 ? "" : "s"}

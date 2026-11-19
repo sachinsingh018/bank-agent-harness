@@ -93,7 +93,7 @@ export function ogCard({
               />
             </svg>
             <div style={{ display: "flex", fontSize: 26, color: STEEL, marginTop: 14 }}>
-              Alert desk. Recorded runs on synthetic data. A person approves every decision.
+              AML Alert Desk. Recorded runs on synthetic data. An analyst approves every decision.
             </div>
           </div>
         </div>

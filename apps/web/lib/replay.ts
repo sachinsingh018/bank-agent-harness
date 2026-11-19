@@ -17,7 +17,7 @@ export type OutcomeKey = "escalate" | "close" | "person";
 export const OUTCOMES: { key: OutcomeKey; label: string }[] = [
   { key: "escalate", label: "Escalate" },
   { key: "close", label: "Close" },
-  { key: "person", label: "Sent to a person" },
+  { key: "person", label: "Analyst review" },
 ];
 
 export function patternLabel(detector: string | null): string {
@@ -25,16 +25,16 @@ export function patternLabel(detector: string | null): string {
   return found ? found.label : "Alert";
 }
 
-/** Where a case ended: a proposal to escalate or close, or a person's desk. */
+/** Where a case ended: a proposal to escalate or close, or analyst review. */
 export function outcomeOf(item: { status: string; recommendation: string | null }): OutcomeKey {
   if (item.status !== "proposed") return "person";
   return item.recommendation === "escalate" ? "escalate" : "close";
 }
 
 export function outcomeLabel(key: OutcomeKey): string {
-  if (key === "escalate") return "Proposed: escalate";
-  if (key === "close") return "Proposed: close";
-  return "Sent to a person";
+  if (key === "escalate") return "Recommended: escalate";
+  if (key === "close") return "Recommended: close";
+  return "Routed to analyst review";
 }
 
 /** The mark class from globals.css for an outcome. */

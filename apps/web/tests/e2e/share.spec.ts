@@ -40,7 +40,7 @@ for (const target of ["site", "run"]) {
 
 test("a run page names its alert pattern and outcome in the title", async ({ page }) => {
   await page.goto(`/watch/${firstRunId()}`);
-  await expect(page).toHaveTitle(/alert, (proposed: (escalate|close)|sent to a person) \| Alert desk$/);
+  await expect(page).toHaveTitle(/alert, (recommended: (escalate|close)|routed to analyst review) \| AML Alert Desk$/);
   const description = await page.locator('meta[name="description"]').getAttribute("content");
   expect(description).toContain("replayed step by step");
 });

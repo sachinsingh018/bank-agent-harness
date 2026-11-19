@@ -27,7 +27,7 @@ const BOXES: Box[] = [
   { id: "tools", x: SIDE_X, y: 104, w: SIDE_W, h: H, title: "Tools", caption: "read only", kind: "tool" },
   { id: "checks", x: MAIN_X, y: 200, w: MAIN_W, h: H, title: "Verifiers", caption: "shape, citations, sums", kind: "check" },
   { id: "reviewer", x: MAIN_X, y: 296, w: MAIN_W, h: H, title: "Reviewer agent", caption: "second look, own checklist", kind: "reviewer" },
-  { id: "human", x: MAIN_X, y: 392, w: MAIN_W, h: H, title: "Human approval", caption: "a person decides", kind: "human" },
+  { id: "human", x: MAIN_X, y: 392, w: MAIN_W, h: H, title: "Human approval", caption: "an analyst decides", kind: "human" },
   { id: "audit", x: MAIN_X, y: 488, w: MAIN_W, h: H, title: "Audit trail", caption: "append-only log", kind: "audit" },
   { id: "trace", x: SIDE_X, y: 200, w: SIDE_W, h: 152, title: "Tracing", caption: "every call", kind: "meta" },
   { id: "evals", x: SIDE_X, y: 392, w: SIDE_W, h: 152, title: "Evals", caption: "fixed alert sets", kind: "meta" },

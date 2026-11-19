@@ -29,9 +29,9 @@ export default async function Image({ params }: { params: Promise<{ runId: strin
   }
   if (!run) {
     return ogCard({
-      eyebrow: "Watch an investigation",
+      eyebrow: "Recorded investigation",
       title: "A recorded money laundering alert, replayed step by step.",
-      detail: "Read-only tools, checks in code, and a person approves every decision.",
+      detail: "Read-only tools, checks in code, and an analyst approves every decision.",
     });
   }
   const { pattern, outcome } = runSummary(run);
@@ -39,6 +39,6 @@ export default async function Image({ params }: { params: Promise<{ runId: strin
   return ogCard({
     eyebrow: `${alertName(pattern)} ${run.alert.alert_id}`,
     title: `Outcome: ${outcome}`,
-    detail: `Replayed step by step: the agent made ${calls}, checks in code ran on its answer, and a person approves the decision.`,
+    detail: `Replayed step by step: the agent made ${calls}, checks in code ran on its answer, and an analyst approves the decision.`,
   });
 }

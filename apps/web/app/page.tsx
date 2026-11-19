@@ -12,7 +12,7 @@ import { Preview, type PreviewStep } from "./_ui/preview";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = pageMeta(
-  "Alert desk: watch an AI agent investigate a money laundering alert",
+  "AML Alert Desk: watch an AI agent investigate a money laundering alert",
   SITE_DESCRIPTION,
 );
 
@@ -40,8 +40,8 @@ function previewSummary(run: RunSteps): string {
   const tools = `The agent made ${run.tool_steps} tool calls`;
   if (outcome?.recommendation && typeof outcome.confidence === "number") {
     return (
-      `A recorded ${pattern} case replays on a loop. ${tools} and proposed to ` +
-      `${outcome.recommendation} at confidence ${outcome.confidence}.`
+      `A recorded ${pattern} case replays on a loop. ${tools} and recommended ` +
+      `${outcome.recommendation === "escalate" ? "escalation" : "closure"} at confidence ${outcome.confidence}.`
     );
   }
   return `A recorded ${pattern} case replays on a loop. ${tools}.`;
@@ -62,20 +62,20 @@ export default async function Home() {
     <div className="landing">
       <section className="hero">
         <div className="hero-text">
-          <p className="eyebrow">An AI agent harness for bank alert work, built from scratch</p>
+          <p className="eyebrow">An AI agent harness for AML alert investigation, built from scratch</p>
           <h1 className="display hero-title">
             Watch an AI agent investigate a money laundering alert, one step at a time.
           </h1>
           <p className="hero-lede">
             It reads the transfers behind a suspicious alert with read-only tools, code checks
-            every claim it makes, and a person approves every decision.
+            every claim it makes, and an analyst approves every decision.
           </p>
           <p className="hero-actions">
             <Link href="/watch" className="button-link primary">
               Watch an investigation
             </Link>
             <Link href="/about" className={styles.quiet}>
-              How it works
+              Methodology
             </Link>
           </p>
         </div>
@@ -84,7 +84,7 @@ export default async function Home() {
             <Preview steps={steps} graph={run.graph} summary={previewSummary(run)} />
             <figcaption className="meta">
               Replaying a recorded {patternLabel(run.alert.detector).toLowerCase()} case.{" "}
-              <Link href={`/watch/${encodeURIComponent(run.run_id)}`}>Watch this one</Link>
+              <Link href={`/watch/${encodeURIComponent(run.run_id)}`}>Open this case</Link>
             </figcaption>
           </figure>
         )}
@@ -94,29 +94,29 @@ export default async function Home() {
         <section className={styles.headline} aria-labelledby="headline-title">
           <h2 id="headline-title" className={styles.headlineTitle}>
             Of the {early.falseTotal + early.realTotal} early development alerts, the agent
-            would propose to close:
+            would recommend closing:
           </h2>
           <div className={styles.pair}>
             <div className={styles.count}>
               <p className={styles.figure}>
                 <span className={`${styles.big} condensed`}>{early.falseClosed}</span> of{" "}
-                {early.falseTotal} false alarms
+                {early.falseTotal} false positives
               </p>
               <CountBar part={early.falseClosed} total={early.falseTotal} tone="good" />
-              <p className="meta">Harmless alerts a person would not have to dig into.</p>
+              <p className="meta">False positives an analyst would not need to work.</p>
             </div>
             <div className={styles.count}>
               <p className={styles.figure}>
                 <span className={`${styles.big} ${styles.missText} condensed`}>
                   {early.realClosed}
                 </span>{" "}
-                of {early.realTotal} real cases
+                of {early.realTotal} true positives
               </p>
               <CountBar part={early.realClosed} total={early.realTotal} tone="miss" />
-              <p className="meta">Real laundering it would have let go.</p>
+              <p className="meta">True positives it would have closed.</p>
             </div>
           </div>
-          <p className={styles.why}>That is why a person approves every close.</p>
+          <p className={styles.why}>That is why an analyst approves every close.</p>
           <p className="meta">
             Early alerts only, strict truth{freeModel ? ", free model" : ""}.{" "}
             <Link href="/results">How these numbers were measured</Link>
@@ -128,7 +128,7 @@ export default async function Home() {
         <li>
           <span className="pillar-n condensed">1</span>
           <span>
-            <strong>Investigates</strong> with read-only tools: it can look at accounts and
+            <strong>Investigates</strong> with read-only tools: it can read accounts and
             transfers, never change them.
           </span>
         </li>
@@ -142,8 +142,8 @@ export default async function Home() {
         <li>
           <span className="pillar-n condensed">3</span>
           <span>
-            <strong>A person decides.</strong> The agent only proposes. Anything unclear goes
-            to a human, and nothing closes on its own.
+            <strong>An analyst decides.</strong> The agent only recommends. Anything unclear is
+            routed to analyst review, and nothing closes on its own.
           </span>
         </li>
       </ol>

@@ -17,8 +17,8 @@ import { Guilloche } from "../_ui/guilloche";
 import styles from "./results.module.css";
 
 export const metadata: Metadata = pageMeta(
-  "Results | Alert desk",
-  "How the agent did on recorded development alerts, in plain counts: the false alarms it would close next to the real cases it would also close.",
+  "Performance | AML Alert Desk",
+  "How the agent performed on recorded development alerts, in plain counts: the false positives it would close next to the true positives it would also close.",
 );
 
 function escalated(o: Outcome): number {
@@ -29,7 +29,7 @@ function escalated(o: Outcome): number {
 function SplitTable({ view, caption }: { view: SplitView; caption: string }) {
   const rows: { name: string; o: Outcome }[] = [];
   if (view.rules) rows.push({ name: "Rules alone", o: view.rules });
-  rows.push({ name: "Agent, with a person on unclear cases", o: view.agent });
+  rows.push({ name: "Agent, with analyst review on unclear cases", o: view.agent });
   return (
     <div className={`table-wrap ${styles.table}`}>
       <table>
@@ -38,13 +38,13 @@ function SplitTable({ view, caption }: { view: SplitView; caption: string }) {
           <tr>
             <th scope="col">Approach</th>
             <th scope="col" className="num">
-              Escalated or sent to a person
+              Escalated or routed to analyst review
             </th>
             <th scope="col" className="num">
-              False alarms closed
+              False positives closed
             </th>
             <th scope="col" className="num">
-              Real cases closed
+              True positives closed
             </th>
           </tr>
         </thead>
@@ -75,14 +75,14 @@ function CountPair({ o }: { o: Outcome }) {
       <div className={styles.count}>
         <p className={styles.figure}>
           Closes <span className={`${styles.big} condensed`}>{o.falseClosed}</span> of{" "}
-          {o.falseTotal} false alarms
+          {o.falseTotal} false positives
         </p>
         <CountBar part={o.falseClosed} total={o.falseTotal} tone="good" />
       </div>
       <div className={styles.count}>
         <p className={styles.figure}>
           and also <span className={`${styles.big} ${styles.miss} condensed`}>{o.realClosed}</span>{" "}
-          of {o.realTotal} real cases
+          of {o.realTotal} true positives
         </p>
         <CountBar part={o.realClosed} total={o.realTotal} tone="miss" />
       </div>
@@ -107,26 +107,26 @@ export default async function ResultsPage() {
 
   return (
     <>
-      <h1>Results</h1>
+      <h1>Performance</h1>
       {!results || !early ? (
         <p className="notice">No results have been exported yet.</p>
       ) : (
         <>
           <p className="lede">
-            The agent ran on {all?.n ?? early.n} recorded development alerts. A false alarm the
-            agent closes saves a person some work; a real case it closes is laundering that
-            would slip through. Both are shown together, because one without the other would
+            The agent ran on {all?.n ?? early.n} recorded development alerts. A false positive the
+            agent closes saves analyst time; a true positive it closes is laundering that would
+            go unreported. Both are shown together, because one without the other would
             mislead.
           </p>
 
           <section aria-labelledby="early-title">
             <h2 id="early-title">The headline: {early.n} early alerts</h2>
             <p className="prose">
-              {early.agent.falseTotal} of these alerts were false alarms and{" "}
-              {early.agent.realTotal} were real laundering. The agent would propose to close{" "}
-              {early.agent.falseClosed} of the false alarms. It would also propose to close{" "}
-              {early.agent.realClosed} of the {early.agent.realTotal} real cases. That is why a
-              person approves every close.
+              {early.agent.falseTotal} of these alerts were false positives and{" "}
+              {early.agent.realTotal} were true positives. The agent would recommend closing{" "}
+              {early.agent.falseClosed} of the false positives. It would also recommend closing{" "}
+              {early.agent.realClosed} of the {early.agent.realTotal} true positives. That is why
+              an analyst approves every close.
             </p>
             <CountPair o={early.agent} />
             <h3>Against the rules on the same {early.n} alerts</h3>
@@ -142,8 +142,8 @@ export default async function ResultsPage() {
               <h2 id="all-title">All {all.n} development alerts</h2>
               <p className="prose">
                 Including the late alerts, the agent would close {all.agent.falseClosed} of{" "}
-                {all.agent.falseTotal} false alarms and {all.agent.realClosed} of{" "}
-                {all.agent.realTotal} real cases. These numbers look easier than the headline for
+                {all.agent.falseTotal} false positives and {all.agent.realClosed} of{" "}
+                {all.agent.realTotal} true positives. These numbers look easier than the headline for
                 the reason below.
               </p>
               <SplitTable view={all} caption={`All development alerts: rules and agent on ${all.n} alerts`} />
@@ -156,9 +156,9 @@ export default async function ResultsPage() {
               <div className="prose">
                 <p>
                   The transfers are synthetic. After {cutoff}, ordinary transfers in this data
-                  almost stop, while laundering keeps going. So an alert late in the data is
+                  almost stop, while laundering continues. So an alert late in the data is
                   very likely to be laundering just because of its date. Of the {late.n} late
-                  alerts, {late.real} are real; of the {early.n} early ones, only{" "}
+                  alerts, {late.real} are true positives; of the {early.n} early ones, only{" "}
                   {early.agent.realTotal}.
                 </p>
                 <p>
@@ -172,11 +172,11 @@ export default async function ResultsPage() {
 
           {review && (
             <section aria-labelledby="review-title">
-              <h2 id="review-title">Cases sent to a person</h2>
+              <h2 id="review-title">Cases routed to analyst review</h2>
               <p className="prose">
-                The harness sent {review.count} of the {all?.n ?? early.n} alerts to a person
-                instead of proposing an answer. They count as escalated above, because a person
-                looks at them.
+                The harness routed {review.count} of the {all?.n ?? early.n} alerts to analyst
+                review instead of making a recommendation. They count as escalated above, because
+                an analyst works them.
               </p>
               {review.reasons.length > 0 && (
                 <ul className={styles.reasons}>
@@ -211,7 +211,7 @@ export default async function ResultsPage() {
               <h2 id="context-title">Context: the rules on all {rules171.alerts} alerts</h2>
               <p className="prose">
                 The monitoring rules raised {rules171.alerts} alerts in total. Under strict truth{" "}
-                {rules171.real} were real and {rules171.false} were false alarms.
+                {rules171.real} were true positives and {rules171.false} were false positives.
               </p>
               {rules171.population && <p className="prose meta">{rules171.population}</p>}
               <p className="prose meta">
@@ -223,7 +223,7 @@ export default async function ResultsPage() {
           <Guilloche />
           <Attribution />
           <p className="meta">
-            Want to see one case end to end? <Link href="/watch">Watch an investigation</Link>.
+            To follow one case end to end, <Link href="/watch">watch an investigation</Link>.
           </p>
         </>
       )}

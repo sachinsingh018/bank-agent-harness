@@ -6,10 +6,10 @@ import type { Metadata } from "next";
 import type { RunSteps } from "./api";
 import { outcomeLabel, outcomeOf, patternLabel } from "./replay";
 
-export const SITE_NAME = "Alert desk";
+export const SITE_NAME = "AML Alert Desk";
 
 export const SITE_DESCRIPTION =
-  "Watch an AI agent investigate money laundering alerts step by step: read-only tools, checks in code, and a person approves every decision.";
+  "Watch an AI agent investigate money laundering alerts step by step: read-only tools, checks in code, and an analyst approves every decision.";
 
 /** Title, description and the matching Open Graph and Twitter fields for one page. */
 export function pageMeta(title: string, description: string): Metadata {
@@ -49,6 +49,6 @@ export function runDescription(run: RunSteps): string {
   const calls = `${run.tool_steps} tool call${run.tool_steps === 1 ? "" : "s"}`;
   return (
     `A recorded ${alertName(pattern).toLowerCase()}, replayed step by step: the agent made ${calls} ` +
-    `and the case ended as "${outcome}". A person approves every decision.`
+    `and the case ended as "${outcome}". An analyst approves every decision.`
   );
 }

@@ -26,7 +26,7 @@ export function CaseFileView({ run }: { run: RunDetail }) {
             <h2>Narrative</h2>
             <p className="prose">{findings.narrative}</p>
             <h2>Claims</h2>
-            <p className="meta">Each claim cites real transfers. Open a transfer to see its details.</p>
+            <p className="meta">Each claim cites recorded transfers. Open a transfer to see its details.</p>
             {findings.claims.length === 0 ? (
               <p className="muted">The agent made no claims.</p>
             ) : (

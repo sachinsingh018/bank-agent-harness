@@ -8,13 +8,13 @@ test("landing renders", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Watch an investigation" })).toBeVisible();
 });
 
-test("landing shows the false alarms closed next to the real cases closed", async ({ page }) => {
+test("landing shows the false positives closed next to the true positives closed", async ({ page }) => {
   const early = earlyCounts();
   await page.goto("/");
   const headline = page.getByRole("region", { name: /early development alerts/ });
-  await expect(headline).toContainText(`${early.false_closed} of ${early.false_total} false alarms`);
-  await expect(headline).toContainText(`${early.real_closed} of ${early.real_total} real cases`);
-  await expect(headline).toContainText("That is why a person approves every close.");
+  await expect(headline).toContainText(`${early.false_closed} of ${early.false_total} false positives`);
+  await expect(headline).toContainText(`${early.real_closed} of ${early.real_total} true positives`);
+  await expect(headline).toContainText("That is why an analyst approves every close.");
 });
 
 test("landing preview can be paused", async ({ page }) => {
@@ -37,7 +37,7 @@ test("landing preview is still under reduced motion", async ({ browser }) => {
 
 test("gallery renders the recorded cases", async ({ page }) => {
   await page.goto("/watch");
-  await expect(page.getByRole("heading", { level: 1, name: "Pick a case" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Case library" })).toBeVisible();
   await expect(page.locator(".case-card").first()).toBeVisible();
 });
 
@@ -55,7 +55,7 @@ test("replay opens at the step in the link", async ({ page }) => {
 test("results renders", async ({ page }) => {
   const early = earlyCounts();
   await page.goto("/results");
-  await expect(page.getByRole("heading", { level: 1, name: "Results" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Performance" })).toBeVisible();
   await expect(page.getByRole("table").first()).toContainText(
     `${early.real_closed} of ${early.real_total}`,
   );
@@ -65,7 +65,7 @@ test("results renders", async ({ page }) => {
 
 test("about renders", async ({ page }) => {
   await page.goto("/about");
-  await expect(page.getByRole("heading", { level: 1, name: "How it works" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Methodology" })).toBeVisible();
   await expect(page.getByRole("img", { name: /How a case moves through the harness/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "CDLA Sharing 1.0" })).toBeVisible();
 });
@@ -73,7 +73,7 @@ test("about renders", async ({ page }) => {
 test("nav hides the API only pages", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: "Watch" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Case library" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Queue" })).toHaveCount(0);
 });
 

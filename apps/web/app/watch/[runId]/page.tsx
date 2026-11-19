@@ -30,7 +30,7 @@ export async function generateMetadata({
   } catch {
     run = null; // the page itself shows the load error
   }
-  if (!run) return pageMeta("Watch an investigation | Alert desk", SITE_DESCRIPTION);
+  if (!run) return pageMeta("Recorded investigation | AML Alert Desk", SITE_DESCRIPTION);
   return pageMeta(runTitle(run), runDescription(run));
 }
 
@@ -96,7 +96,7 @@ export default async function WatchRun({ params }: { params: Promise<{ runId: st
     return (
       <>
         <p className="back">
-          <Link href="/watch">All cases</Link>
+          <Link href="/watch">Case library</Link>
         </p>
         <p className="notice error">{error}</p>
       </>
@@ -111,7 +111,7 @@ export default async function WatchRun({ params }: { params: Promise<{ runId: st
   return (
     <>
       <p className="back">
-        <Link href="/watch">All cases</Link>
+        <Link href="/watch">Case library</Link>
       </p>
       <header className="watch-head">
         <p className="eyebrow">

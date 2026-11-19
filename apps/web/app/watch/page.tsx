@@ -9,8 +9,8 @@ import { isBundleMode } from "../../lib/source";
 import { Gallery, GalleryFromUrl } from "./gallery";
 
 export const metadata: Metadata = pageMeta(
-  "Watch an investigation | Alert desk",
-  "Pick a recorded money laundering alert and watch the agent investigate it, step by step.",
+  "Case library | AML Alert Desk",
+  "Recorded money laundering alerts, each with the agent investigation replayed step by step.",
 );
 
 export default async function WatchGallery() {
@@ -26,12 +26,12 @@ export default async function WatchGallery() {
 
   return (
     <>
-      <p className="eyebrow">Watch an investigation</p>
-      <h1 className="display">Pick a case</h1>
+      <p className="eyebrow">Recorded investigations</p>
+      <h1 className="display">Case library</h1>
       <p className="lede">
-        Each card is a real alert from a monitoring rule, drawn as its money flow: dots are bank
-        accounts, arrows are transfers. Open one to watch, step by step, how the agent
-        investigated it and what the checks and the reviewer made of its answer.
+        Each card is an alert raised by a monitoring rule, drawn as its money flow: dots are bank
+        accounts, arrows are transfers. Open one to follow, step by step, how the agent
+        investigated it and how the checks and the reviewer agent assessed its answer.
       </p>
 
       {error && <p className="notice error">{error}</p>}

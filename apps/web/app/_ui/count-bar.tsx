@@ -15,7 +15,7 @@ export function CountBar({
 }: {
   part: number;
   total: number;
-  /** "good" for false alarms closed, "miss" for real cases closed. */
+  /** "good" for false positives closed, "miss" for true positives closed. */
   tone: "good" | "miss";
 }) {
   const cols = Math.min(Math.max(total, 1), PER_ROW);

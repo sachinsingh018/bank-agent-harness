@@ -52,7 +52,7 @@ export default async function QueuePageView({
       <h1>Queue</h1>
       <p className="lede">
         Alerts raised by the monitoring rules and investigated by the agent. A second agent
-        reviews each answer, and a person makes the final call. Waiting cases have no human
+        reviews each answer, and an analyst makes the final decision. Waiting cases have no human
         decision yet.
       </p>
       <nav className="views" aria-label="Which cases">
@@ -104,7 +104,7 @@ export default async function QueuePageView({
                     <td>
                       <Says recommendation={item.recommendation} status={item.status} />
                       {item.status === "human_review" && (
-                        <span className="meta"> to a person: {reasonLabel(item.reason)}</span>
+                        <span className="meta"> to an analyst: {reasonLabel(item.reason)}</span>
                       )}
                     </td>
                     <td>

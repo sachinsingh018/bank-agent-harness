@@ -12,7 +12,7 @@ export function formatConfidence(value: number | null): string {
 
 export function formatStatus(status: string, reason: string | null): string {
   if (status === "human_review") {
-    return reason ? `human review (${reason.replaceAll("_", " ")})` : "human review";
+    return reason ? `analyst review (${reason.replaceAll("_", " ")})` : "analyst review";
   }
   return status;
 }
@@ -180,7 +180,7 @@ export function saysLabel(kind: SaysKind): string {
 
 /** Human review reasons in plain words. */
 export function reasonLabel(reason: string | null): string {
-  return reason ? reason.replaceAll("_", " ") : "sent to a person";
+  return reason ? reason.replaceAll("_", " ") : "no reason recorded";
 }
 
 /** Verifier names in user words ("Checks", not "verifiers"). */

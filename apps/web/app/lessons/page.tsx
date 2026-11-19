@@ -6,7 +6,7 @@ import { loadErrorText } from "../../lib/errors";
 import { actorLabel, formatTime } from "../../lib/format";
 import { isBundleMode } from "../../lib/source";
 
-export const metadata = { title: "Lessons | Alert desk" };
+export const metadata = { title: "Lessons | AML Alert Desk" };
 
 function one(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;

@@ -33,22 +33,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <header className="site-header">
           <div className="bar">
             <Link href="/" className="brand">
-              Alert desk
+              AML Alert Desk
             </Link>
             <nav aria-label="Main">
-              <Link href="/watch">Watch</Link>
-              <Link href="/results">Results</Link>
+              <Link href="/watch">Case library</Link>
+              <Link href="/results">Performance</Link>
               {live && <Link href="/queue">Queue</Link>}
               {live && <Link href="/evals">Evals</Link>}
               {live && <Link href="/lessons">Lessons</Link>}
-              <Link href="/about">How it works</Link>
+              <Link href="/about">Methodology</Link>
             </nav>
           </div>
           {!webDecisionsEnabled() && (
             <div className="replay-banner" role="status">
               <p>
-                Replay mode: you can browse recorded cases, checks and eval results. Decisions are
-                off, so nothing here changes any data.
+                Replay mode: you can browse recorded cases, checks and evaluation results. Decisions
+                are disabled, so nothing here changes any data.
               </p>
             </div>
           )}

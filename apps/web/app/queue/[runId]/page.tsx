@@ -206,7 +206,7 @@ function DecisionSection({ run }: { run: RunDetail }) {
   } else if (!webDecisionsEnabled()) {
     content = (
       <p className="muted">
-        Decisions are disabled in this web deployment. In the full setup a person approves,
+        Decisions are disabled in this web deployment. In the full setup an analyst approves,
         edits or rejects the agent&apos;s answer here.
       </p>
     );

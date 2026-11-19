@@ -13,8 +13,8 @@ export function Contact() {
         Want to try it with your own data?
       </h2>
       <p className={styles.text}>
-        Tell me what kind of alerts or cases you work with, and I will show you how the harness
-        could run on them.
+        Tell me which alert types or case work your team handles, and I will walk you through
+        how the harness could run on them.
       </p>
       <p className={styles.actions}>
         <a href={EMAIL} className="button-link primary">

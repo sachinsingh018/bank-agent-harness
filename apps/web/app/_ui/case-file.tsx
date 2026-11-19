@@ -40,7 +40,7 @@ export function Verdict({ run }: { run: RunDetail }) {
   const typology = findingText(run.findings, "typology");
   return (
     <section className="verdict" aria-label="Agent says">
-      <p className="meta">Agent says</p>
+      <p className="meta">Agent recommendation</p>
       <div className="line">
         <p className={`word condensed word-${kind}`}>
           <span className={`mark ${kind}`} aria-hidden="true" />
@@ -61,7 +61,7 @@ export function Verdict({ run }: { run: RunDetail }) {
             <span className="one">1</span>
           </div>
           <p className="about meta">
-            Confidence is the agent&apos;s estimate that the alert is real money laundering. At 0.5
+            Confidence is the agent&apos;s estimate that the alert is a true positive (actual money laundering). At 0.5
             or above it must escalate; below 0.5 it must close.
           </p>
         </>
@@ -75,7 +75,7 @@ export function Verdict({ run }: { run: RunDetail }) {
       {run.status === "human_review" && (
         <p className="notice error">
           <span className="mark review" aria-hidden="true" />
-          Sent to a person: {reasonLabel(run.reason)}. The agent never closes a case like this
+          Routed to analyst review: {reasonLabel(run.reason)}. The agent never closes a case like this
           on its own.
         </p>
       )}
@@ -224,11 +224,11 @@ export function ReviewerSection({ run }: { run: RunDetail }) {
       <p>
         <ReviewerWord verdict={review.verdict} />
         {review.failure_reason ? ` (${reasonLabel(review.failure_reason)})` : ""}
-        {confidence !== null && <span className="meta">, sure at {confidence}</span>}
+        {confidence !== null && <span className="meta">, confidence {confidence}</span>}
       </p>
       <p className="meta">
         A second agent checks the answer against its own checklist. A rejection never closes the
-        case: it comes to a person.
+        case: it is routed to an analyst.
       </p>
       {count > 0 && (
         <details className="expander simple">
@@ -317,7 +317,7 @@ export function LessonsSection({ run }: { run: RunDetail }) {
     <section aria-labelledby="lessons-shown">
       <h2 id="lessons-shown">Lessons shown</h2>
       <p className="meta">
-        Saved by people on earlier, different alerts. Shown to the agent as general guidance, not
+        Saved by analysts on earlier, different alerts. Shown to the agent as general guidance, not
         as evidence about this case.
       </p>
       <ul className="plain">

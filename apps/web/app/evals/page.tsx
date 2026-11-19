@@ -21,7 +21,7 @@ import {
 import { isValidEvalRunId } from "../../lib/flags";
 import { isBundleMode } from "../../lib/source";
 
-export const metadata = { title: "Evals | Alert desk" };
+export const metadata = { title: "Evals | AML Alert Desk" };
 
 const SHOWN_RUNS = 20;
 const SPLITS: { name: SplitName; label: string }[] = [
@@ -41,18 +41,18 @@ const METRICS: Metric[] = [
   { label: "Precision, rules alone", value: (s) => formatRate(s.baseline?.precision_strict) },
   { label: "Recall, agent", value: (s) => formatRate(s.agent_with_human_review?.strict?.recall) },
   {
-    label: "False alarms, agent vs rules",
+    label: "False positives, agent vs rules",
     value: (s) => {
       const d = s.fp_reduction?.at_agent_decisions;
       return d ? `${formatCount(d.fp)} vs ${formatCount(d.baseline_fp)}` : "n/a";
     },
   },
   {
-    label: "False alarms removed",
+    label: "False positives removed",
     value: (s) => formatRate(s.fp_reduction?.at_agent_decisions?.fp_reduction),
   },
   {
-    label: "Sent to a person",
+    label: "Routed to analyst review",
     value: (s) =>
       s.human_review
         ? `${formatRate(s.human_review.rate)} (${formatCount(s.human_review.count)})`
@@ -174,7 +174,7 @@ function RunDetailBlock({ detail }: { detail: EvalRunDetail | null }) {
         <dd>{counts(detail.limits)}</dd>
         <dt>Cases by status</dt>
         <dd>{counts(detail.counts?.by_status)}</dd>
-        <dt>Why sent to a person</dt>
+        <dt>Why routed to an analyst</dt>
         <dd>{counts(detail.counts?.by_human_review_reason)}</dd>
         <dt>Lessons</dt>
         <dd>
@@ -246,7 +246,7 @@ export default async function EvalsPage() {
               <span className="num">Cases</span>
               <span className="num">Precision vs rules</span>
               <span className="num">Recall</span>
-              <span className="num">To a person</span>
+              <span className="num">To an analyst</span>
               <span className="num">Reviewer rejects</span>
               <span className="num">Cost</span>
             </div>
@@ -280,7 +280,7 @@ export default async function EvalsPage() {
 
       <p className="meta">
         Numbers count cases and rates only; no answer for a single alert is shown here. See{" "}
-        <Link href="/about">How it works</Link> for what is measured and how much so far.
+        <Link href="/about">Methodology</Link> for what is measured and how much so far.
       </p>
     </>
   );
