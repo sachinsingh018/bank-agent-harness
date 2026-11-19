@@ -64,5 +64,5 @@ def test_reviewer_wiring() -> None:
     assert reviewer.submit_tool.name == REVIEW_TOOL_NAME
     assert [v.name for v in reviewer.make_verifiers(FINDINGS)] == ["review_claim_index"]
     prompt = load_prompt(reviewer.prompt)
-    assert prompt.version == "v1" and REVIEW_TOOL_NAME in prompt.text
-    assert "at most 6 tool calls" in prompt.text
+    assert prompt.version == "v2" and REVIEW_TOOL_NAME in prompt.text
+    assert "at most 2 tool calls" in prompt.text
