@@ -95,14 +95,15 @@ CURATED: tuple[Curated, ...] = (
         "29c00e8b-abe7-4fd9-80a1-1f920c492ab0",
         "False negative, closed",
         "Prompt v3 recommended closing the same alert at confidence 0.15. The alert is a true "
-        "positive, so this is a false negative.",
+        "positive, so this is a false negative. The analyst rejected the closure.",
         "prompt-versions",
     ),
     Curated(
         "e75bcdb8-6779-4261-afed-3e70f759a2ff",
         "Routed to analyst review",
         "Prompt v5 also recommended closing it at confidence 0.15, as v4 did. The reviewer "
-        "agent hit its time limit, so the case was routed to analyst review.",
+        "agent hit its time limit, so the case was routed to analyst review. The analyst "
+        "rejected the closure: the alert is a true positive.",
         "prompt-versions",
     ),
     Curated(
@@ -128,7 +129,8 @@ CURATED: tuple[Curated, ...] = (
         "61e56e79-9dd9-4115-8172-36e7775ddc24",
         "Failed validation, routed to analyst",
         "The findings failed the deterministic checks after one retry, so the case was routed "
-        "to analyst review.",
+        "to analyst review. The analyst rejected the escalation: only 2 of 31 transfers are "
+        "laundering.",
         None,
     ),
 )
