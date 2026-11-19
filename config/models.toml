@@ -71,3 +71,16 @@ input = "0"
 output = "0"
 cache_read = "0"
 cache_write = "0"
+
+# Free reviewer fallback when the Gemma pool is rate limited upstream. Ant Group model:
+# only synthetic or public data may be sent (CLAUDE.md). Chosen 2026-11-19.
+[profiles.openrouter-free-ling]
+provider = "openrouter"
+model = "inclusionai/ling-3.2-flash:free"
+max_output_tokens = 16000
+
+[profiles.openrouter-free-ling.prices]
+input = "0"
+output = "0"
+cache_read = "0"
+cache_write = "0"
