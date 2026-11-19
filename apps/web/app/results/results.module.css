@@ -1,0 +1,99 @@
+/* Results page: count pairs, review reasons and the separately labelled rules context. */
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 1rem 2.5rem;
+  align-items: start;
+  margin: 1rem 0 0.5rem;
+  max-width: 52rem;
+}
+
+.count {
+  border-top: 1px solid var(--ink);
+  padding-top: 0.6rem;
+}
+
+.figure {
+  margin: 0;
+  font-size: var(--size-subhead);
+  font-weight: 600;
+}
+
+.big {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--intaglio);
+}
+
+.miss {
+  color: var(--brick);
+}
+
+.table {
+  max-width: 52rem;
+}
+
+.table tbody th {
+  white-space: normal;
+  min-width: 7rem;
+  color: var(--ink);
+  font-size: var(--size-body);
+  font-weight: 600;
+}
+
+.table thead th {
+  white-space: normal;
+  vertical-align: bottom;
+}
+
+@media (max-width: 36rem) {
+  .table th,
+  .table td {
+    padding-right: 0.5rem;
+  }
+}
+
+.reasons {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  max-width: var(--prose);
+}
+
+.reasons li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  align-items: baseline;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.reasonCount {
+  font-size: var(--size-subhead);
+  font-weight: 700;
+  color: var(--brick);
+  text-align: right;
+  padding-right: 0.75rem;
+}
+
+.notes li {
+  margin: 0 0 0.35rem;
+}
+
+.context {
+  margin-top: 2rem;
+  padding: 0.25rem 1rem 0.75rem;
+  border-left: 3px double var(--steel);
+}
+
+.context h2 {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 52rem) {
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

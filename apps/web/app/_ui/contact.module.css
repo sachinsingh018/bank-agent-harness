@@ -1,0 +1,24 @@
+/* Contact call to action: a ruled band with two plain links, shared by landing and about. */
+
+.contact {
+  margin-top: 2.25rem;
+  padding: 1.25rem 0 0.5rem;
+  border-top: 1px solid var(--ink);
+}
+
+.title {
+  margin: 0 0 0.4rem;
+  font-size: var(--size-title);
+}
+
+.text {
+  margin: 0;
+  max-width: var(--prose);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}

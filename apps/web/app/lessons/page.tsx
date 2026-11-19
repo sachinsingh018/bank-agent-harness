@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { getCorrections, type CorrectionsPage } from "../../lib/api";
 import { loadErrorText } from "../../lib/errors";
 import { actorLabel, formatTime } from "../../lib/format";
+import { isBundleMode } from "../../lib/source";
 
-export const metadata = { title: "Lessons | Alert desk" };
+export const metadata = { title: "Lessons | AML Alert Desk" };
 
 function one(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -15,6 +17,8 @@ export default async function LessonsPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  // The public site has no API: these pages exist only in API mode.
+  if (isBundleMode()) notFound();
   const cursor = one((await searchParams).cursor);
 
   let page: CorrectionsPage | null = null;

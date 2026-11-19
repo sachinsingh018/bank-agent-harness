@@ -153,7 +153,7 @@ def test_runner_and_scorer_end_to_end(
     assert manifest["total_cost_usd"] == "0"
     review = manifest["review"]
     assert review["enabled"] is True and review["model"]["profile"] == "scripted"
-    assert review["prompt"]["version"] == "v1" and review["limits"]["max_tool_steps"] == 6
+    assert review["prompt"]["version"] == "v2" and review["limits"]["max_tool_steps"] == 3
 
     code = aml_agent_score.main(["--run", str(run_dir)])
     stdout = capfd.readouterr().out

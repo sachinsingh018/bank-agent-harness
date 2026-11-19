@@ -27,7 +27,7 @@ from tools.aml.launch import server_params
 PROMPTS = Path("modules/aml/prompts")
 INVESTIGATOR_PROMPT = PromptRef(PROMPTS / "investigator_v5.md", "v5")
 CASE_MESSAGE_PROMPT = PromptRef(PROMPTS / "case_message_v1.md", "v1")
-REVIEWER_PROMPT = PromptRef(PROMPTS / "reviewer_v1.md", "v1")
+REVIEWER_PROMPT = PromptRef(PROMPTS / "reviewer_v2.md", "v2")
 REVIEW_MESSAGE_PROMPT = PromptRef(PROMPTS / "review_message_v1.md", "v1")
 LESSONS_BLOCK_PROMPT = PromptRef(PROMPTS / "lessons_block_v1.md", "v1")
 

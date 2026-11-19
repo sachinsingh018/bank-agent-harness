@@ -73,4 +73,10 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run build
+      # Keep the build output: the static route check reads its route table.
+      - run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build-output.txt
+      - run: npm run check:static
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

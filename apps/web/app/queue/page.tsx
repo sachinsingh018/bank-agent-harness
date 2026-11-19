@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { getQueue, type QueuePage, type QueueState } from "../../lib/api";
 import { loadErrorText } from "../../lib/errors";
@@ -11,6 +12,7 @@ import {
   saysKind,
 } from "../../lib/format";
 import { Meter, ReviewerWord, Says } from "../_ui/marks";
+import { isBundleMode } from "../../lib/source";
 
 const VIEWS: { state: QueueState; label: string }[] = [
   { state: "waiting", label: "Waiting" },
@@ -31,6 +33,8 @@ export default async function QueuePageView({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  // The public site has no API: these pages exist only in API mode.
+  if (isBundleMode()) notFound();
   const params = await searchParams;
   const state = toState(one(params.state));
   const cursor = one(params.cursor);
@@ -48,7 +52,7 @@ export default async function QueuePageView({
       <h1>Queue</h1>
       <p className="lede">
         Alerts raised by the monitoring rules and investigated by the agent. A second agent
-        reviews each answer, and a person makes the final call. Waiting cases have no human
+        reviews each answer, and an analyst makes the final decision. Waiting cases have no human
         decision yet.
       </p>
       <nav className="views" aria-label="Which cases">
@@ -100,7 +104,7 @@ export default async function QueuePageView({
                     <td>
                       <Says recommendation={item.recommendation} status={item.status} />
                       {item.status === "human_review" && (
-                        <span className="meta"> to a person: {reasonLabel(item.reason)}</span>
+                        <span className="meta"> to an analyst: {reasonLabel(item.reason)}</span>
                       )}
                     </td>
                     <td>

@@ -21,7 +21,7 @@ from sqlalchemy import Connection, Engine, func, insert, select, text
 from sqlalchemy.exc import DBAPIError
 
 from harness import records
-from harness.db.records_models import AgentReview, AgentRun, CaseEvent, ModelCall
+from harness.db.records_models import AgentReview, AgentRun, CaseEvent, ModelCall, RunTraceRow
 from harness.models.config import get_profile
 from harness.models.types import Usage
 from harness.prompts import load_prompt
@@ -32,6 +32,7 @@ from harness.records import (
     verify_chain,
 )
 from harness.review import apply_review
+from harness.run_traces import MAX_TOOL_RESULT_CHARS, StoredTrace
 from harness.trace import CaseResult, ModelCallRecord, ReviewOutcome, RunTrace
 from harness.verifiers.base import VerifierResult
 from modules.aml.agent.spec import AML_SPEC
@@ -96,6 +97,7 @@ def test_migration_down_and_up_again(harness_engine: Engine) -> None:
             command.upgrade(_alembic(conn), "head")
             assert set(TABLES) <= _tables(conn)
             assert "agent_reviews" in _tables(conn)  # 0005
+            assert "run_traces" in _tables(conn)  # 0006
             assert _triggers(conn) == TRIGGERS
             # An empty audit log downgrades without the flag.
             command.downgrade(_alembic(conn), "0002")
@@ -360,6 +362,7 @@ def test_record_case_result_writes_run_calls_and_event(harness_engine: Engine, c
             "confidence": 0.8,
             "run_id": run_p,
             "run_digest": records.current_run_digest(conn, run_p),
+            "trace_digest": records.current_trace_digest(conn, run_p),
         }
         assert events[run_r].event == "human_review_created"
         assert events[run_r].payload == {
@@ -367,9 +370,11 @@ def test_record_case_result_writes_run_calls_and_event(harness_engine: Engine, c
             "reason": "limit_steps",
             "run_id": run_r,
             "run_digest": records.current_run_digest(conn, run_r),
+            "trace_digest": records.current_trace_digest(conn, run_r),
         }
         report = verify_chain(conn, check_runs=True)
         assert report.ok and report.runs_checked >= 2 and report.run_mismatch_ids == []
+        assert report.traces_checked >= 2
 
 
 def test_record_case_result_is_one_transaction(
@@ -603,5 +608,65 @@ def test_a_run_recorded_before_reviews_still_verifies(harness_engine: Engine) ->
             assert records.current_review_digest(conn, run_id) is None
             report = verify_chain(conn, check_runs=True)
             assert report.ok and report.run_mismatch_ids == []
+        finally:
+            trans.rollback()
+
+
+def test_run_traces_are_stored_append_only_and_tampering_is_found(harness_engine: Engine) -> None:
+    """Each recorded run gets one run_traces row with the capped maker and checker traces;
+    its event carries trace_digest, and an edited trace row shows up in verify."""
+    profile = get_profile("scripted")
+    prompt = load_prompt(AML_SPEC.prompt)
+    with harness_engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            run_id = record_case_result(
+                conn, _reviewed(f"T-{uuid.uuid4()}", "approve"), profile=profile, prompt=prompt
+            )
+            row = conn.execute(select(RunTraceRow).where(RunTraceRow.run_id == run_id)).one()
+            stored = StoredTrace.model_validate(row.trace)
+            assert stored.checker is not None and stored.maker.module == "aml"
+            assert stored.tool_result_cap == MAX_TOOL_RESULT_CHARS
+            for sql in (
+                "UPDATE run_traces SET case_card = NULL WHERE run_id = :r",
+                "DELETE FROM run_traces WHERE run_id = :r",
+                "TRUNCATE run_traces",
+            ):
+                with pytest.raises(DBAPIError, match="append-only"):
+                    with conn.begin_nested():
+                        conn.execute(text(sql), {"r": run_id})
+            event = conn.execute(select(CaseEvent).where(CaseEvent.run_id == run_id)).one()
+            assert event.payload["trace_digest"] == records.current_trace_digest(conn, run_id)
+            assert verify_chain(conn, check_runs=True).ok
+            conn.execute(text("ALTER TABLE run_traces DISABLE TRIGGER USER"))
+            conn.execute(
+                text("UPDATE run_traces SET case_card = '{}'::jsonb WHERE run_id = :r"),
+                {"r": run_id},
+            )
+            conn.execute(text("ALTER TABLE run_traces ENABLE TRIGGER USER"))
+            assert verify_chain(conn).ok  # the chain itself is intact
+            report = verify_chain(conn, check_runs=True)
+            assert not report.ok and report.run_mismatch_ids == [event.id]
+        finally:
+            trans.rollback()
+
+
+def test_a_run_recorded_without_its_trace_has_no_trace_digest(harness_engine: Engine) -> None:
+    profile = get_profile("scripted")
+    prompt = load_prompt(AML_SPEC.prompt)
+    with harness_engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            run_id = record_case_result(
+                conn,
+                _proposed(f"T-{uuid.uuid4()}"),
+                profile=profile,
+                prompt=prompt,
+                store_trace=False,
+            )
+            event = conn.execute(select(CaseEvent).where(CaseEvent.run_id == run_id)).one()
+            assert "trace_digest" not in event.payload
+            assert records.current_trace_digest(conn, run_id) is None
+            assert verify_chain(conn, check_runs=True).ok
         finally:
             trans.rollback()

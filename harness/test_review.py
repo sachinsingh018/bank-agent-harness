@@ -128,7 +128,7 @@ def test_a_result_written_before_maker_checker_still_loads() -> None:
 
 def test_reviewer_limits() -> None:
     reviewer = load_reviewer_limits()
-    assert reviewer.max_tool_steps == 6
+    assert reviewer.max_tool_steps == 3
     assert reviewer.max_total_tokens < load_limits().max_total_tokens
     assert reviewer.max_wall_seconds == load_limits().max_wall_seconds
 

@@ -1,0 +1,72 @@
+/* Mini-replay controls: a progress rail of one tick per step, a counter and a pause button.
+ * Motion scale from the plan: 120, 240, 480 and 960 ms, off under reduced motion. */
+
+.wrap {
+  --motion-1: 120ms;
+  --motion-2: 240ms;
+  --motion-3: 480ms;
+  --motion-4: 960ms;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 3px;
+  flex: 1 1 8rem;
+  min-width: 8rem;
+}
+
+.rail li {
+  flex: 1 1 0;
+  height: 4px;
+  background: var(--rule);
+  border-radius: 1px;
+  transition: background-color var(--motion-2) ease-out;
+}
+
+.rail li.done {
+  background: var(--intaglio);
+  opacity: 0.55;
+}
+
+.rail li.now {
+  background: var(--intaglio);
+}
+
+.counter {
+  color: var(--steel);
+  font-size: var(--size-meta);
+  white-space: nowrap;
+}
+
+.toggle {
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--intaglio);
+  background: none;
+  border: 1px solid var(--intaglio);
+  border-radius: var(--radius-panel);
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail li {
+    transition: none;
+  }
+}

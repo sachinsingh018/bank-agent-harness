@@ -167,7 +167,7 @@ def test_run_case_with_scripted_model(harness_test_url: str, harness_samples: Sa
     first = checker_request.messages[0].blocks[0]
     assert isinstance(first, TextBlock) and harness_samples.alert_id in first.text
     assert "Scripted test finding." in first.text
-    assert result.review.prompt_version == "v1"
+    assert result.review.prompt_version == "v2"
     assert [r.name for r in result.review.verifier_results] == ["review_claim_index"]
     assert len(result.trace.model_calls) == 3 and len(result.review.trace.model_calls) == 1
     assert result.totals.input_tokens == 400  # maker 3 calls plus checker 1, 100 each

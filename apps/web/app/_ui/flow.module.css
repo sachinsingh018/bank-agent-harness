@@ -1,0 +1,49 @@
+/* Opt-in parts of the money-flow diagram, used by the replay board: focusable money links
+   and dots of money moving along them. Built on the tokens in globals.css. */
+
+.edgeButton {
+  cursor: pointer;
+  outline: none;
+}
+
+/* A wide invisible stroke so thin links are easy to hover. */
+:global(.flow-edge).edgeButton path.hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 7;
+  opacity: 1;
+  pointer-events: stroke;
+  animation: none;
+}
+
+:global(.flow-edge).edgeFocus path:not(.hit),
+:global(.flow-edge).edgeButton:focus-visible path:not(.hit) {
+  stroke: var(--signal);
+  opacity: 1;
+}
+
+:global(.flow-edge).edgeFocus path:global(.head),
+:global(.flow-edge).edgeButton:focus-visible path:global(.head) {
+  fill: var(--signal);
+}
+
+/* The keyboard focus ring: a dashed ink halo under the focused link. */
+:global(.flow-edge).edgeButton:focus-visible path.hit {
+  stroke: color-mix(in srgb, var(--ink) 18%, transparent);
+  stroke-dasharray: 1.5 1.5;
+  stroke-width: 6;
+}
+
+/* Money in motion: amber dots, invisible unless an animation moves them. */
+.money circle {
+  fill: var(--signal);
+  stroke: var(--paper);
+  stroke-width: 0.5;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .money {
+    display: none;
+  }
+}

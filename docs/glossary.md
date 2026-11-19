@@ -8,7 +8,11 @@ Finance terms, added as they come up.
 - **Typology:** a named money laundering pattern, such as fan-in, fan-out or cycles.
 - **Four-eyes principle:** two people must agree before a risky action. Here, the agent proposes and you approve.
 - **Maker-checker:** the same idea as four-eyes: one party prepares, another reviews.
-- **False positive:** an alert that turns out to be harmless. Most alerts are.
+- **False positive:** an alert that turns out to be ordinary activity, not laundering. Most alerts are. Closing one saves an analyst work.
+- **True positive:** an alert that turns out to be real laundering. It should be escalated; closing one lets laundering go unreported.
+- **False negative:** real laundering that gets closed or never raised, so it goes unreported. In this project it usually means the agent recommended closing a true positive.
+- **Scenario:** an AML monitoring rule that looks for one pattern in the transfers, such as fan-out, and raises an alert when it matches. Banks run many scenarios side by side; each one is also called a detector here.
+- **Analyst review:** a case routed to a human analyst instead of getting an agent recommendation, for example because the checks failed or a step, token or time limit was hit. The analyst works the alert and decides.
 - **Precision (of alerts):** of the alerts raised, the share that were real laundering. Low precision means many false alarms.
 - **Recall:** of the real laundering, the share that was caught.
 - **Fan-out:** one account sends money to many different accounts in a short time, splitting a large sum into pieces.
@@ -26,3 +30,10 @@ Finance terms, added as they come up.
 - **Data leak (in evaluation):** a clue in the test data that gives away the answer for a reason that would not exist in real life, so scores look better than they are.
 - **Audit log:** a record of who did what and when (agent proposals, human approvals), which nobody may change or delete afterwards. Regulators expect banks to keep one for every decision.
 - **Hash chain:** a way to make tampering visible: each record stores a fingerprint (hash) of itself plus the fingerprint of the record before it. Change one old record and every fingerprint after it no longer matches.
+- **False alarm:** an everyday name for a false positive (see above). The site says false positive.
+- **Escalate and close:** the two answers to an alert. Escalate means "an analyst should look closer, maybe file a SAR"; close means "this looks harmless, no further action".
+- **Strict truth:** this project's rule for calling an alert real: at least half of its transfers must be labelled as laundering. A looser rule (any one laundering transfer) would count many more alerts as real.
+- **Rules baseline:** what the monitoring rules achieve on their own, used as the yardstick for the agent. Rules escalate every alert they raise, so they never close a real case but leave every false alarm to a person.
+- **Development and held-out alerts:** development alerts are the ones looked at while improving prompts; held-out alerts are kept aside and only used for a final, fairer test. Scores on development alerts can be optimistic.
+- **Intaglio:** the engraved printing used for banknotes and share certificates: ink sits in fine cut lines, so it feels raised. The site's green accent and its favicon and share images borrow the look.
+- **Guilloche:** the fine, interlaced wave patterns printed on banknotes and cheques to make copying hard. The site uses a guilloche line as a section break and on its share images.

@@ -20,9 +20,15 @@ transaction, and its event carries review_digest: the sha256 of the canonical JS
 verify_chain checks it the same way. Runs without a review have no review_digest, so runs
 recorded before reviews existed verify exactly as before.
 
+Each run also has one run_traces row (its stored steps, harness.run_traces), written in the same
+transaction, and its event carries trace_digest: the sha256 of the canonical JSON of that row.
+verify_chain checks it the same way. Traces added later for runs recorded before run_traces
+existed (evals.backfill_traces) have no event of their own, so no digest covers them.
+
 CLI (from the repo root):
     uv run python -m harness.records verify [--allow-remote] [--skip-run-digests]
-prints "chain ok, N rows, M run digests checked, K review digests checked" or exits
+prints "chain ok, N rows, M run digests checked, K review digests checked, T trace digests
+checked" or exits
 non-zero. The URL is never printed.
 """
 
@@ -51,6 +57,7 @@ from harness.db.records_models import (
     EvalResult,
     EvalRun,
     ModelCall,
+    RunTraceRow,
 )
 from harness.db.session import (
     DatabaseConnectionError,
@@ -61,6 +68,7 @@ from harness.db.session import (
 )
 from harness.models.config import ModelProfile
 from harness.prompts import LoadedPrompt
+from harness.run_traces import stored_trace
 from harness.trace import CaseResult
 
 WRITE_URL_ENV = "HARNESS_WRITE_DATABASE_URL"
@@ -77,6 +85,7 @@ class ChainReport(BaseModel):
     first_bad_id: int | None
     runs_checked: int = 0
     reviews_checked: int = 0
+    traces_checked: int = 0
     # case_events ids whose run records (or review record) no longer match
     run_mismatch_ids: list[int] = []
 
@@ -135,6 +144,11 @@ def run_digest(run: Mapping[str, Any], calls: Sequence[Mapping[str, Any]]) -> st
 def review_digest(review: Mapping[str, Any]) -> str:
     """sha256 of the full agent_reviews row (money at the stored scale)."""
     return hashlib.sha256(canonical_json(_digest_row(review)).encode("ascii")).hexdigest()
+
+
+def trace_digest(trace_row: Mapping[str, Any]) -> str:
+    """sha256 of the full run_traces row."""
+    return hashlib.sha256(canonical_json(_digest_row(trace_row)).encode("ascii")).hexdigest()
 
 
 def event_hash(
@@ -236,12 +250,19 @@ def current_review_digest(conn: Connection, run_id: str) -> str | None:
     return None if row is None else review_digest(dict(row._mapping))
 
 
+def current_trace_digest(conn: Connection, run_id: str) -> str | None:
+    """trace_digest recomputed from the stored row, or None when the trace row is missing."""
+    row = conn.execute(select(RunTraceRow.__table__).where(RunTraceRow.run_id == run_id)).first()
+    return None if row is None else trace_digest(dict(row._mapping))
+
+
 def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
     """Recompute every hash in id order. first_bad_id is the first row whose prev_hash or
     hash does not match. Removing rows at the very end cannot be seen by a chain alone.
     With check_runs, every event that carries a run_digest is also compared with its current
-    agent_runs and model_calls rows, and every event that carries a review_digest with its
-    agent_reviews row; mismatching event ids are listed."""
+    agent_runs and model_calls rows, every event that carries a review_digest with its
+    agent_reviews row and every event that carries a trace_digest with its run_traces row;
+    mismatching event ids are listed."""
     rows = conn.execute(
         select(
             CaseEvent.id,
@@ -261,6 +282,7 @@ def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
     count = 0
     digests: list[tuple[int, str | None, Any]] = []
     review_digests: list[tuple[int, str | None, Any]] = []
+    trace_digests: list[tuple[int, str | None, Any]] = []
     for row in rows:
         count += 1
         recomputed = event_hash(
@@ -274,6 +296,8 @@ def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
             digests.append((row.id, row.run_id, row.payload["run_digest"]))
         if isinstance(row.payload, dict) and "review_digest" in row.payload:
             review_digests.append((row.id, row.run_id, row.payload["review_digest"]))
+        if isinstance(row.payload, dict) and "trace_digest" in row.payload:
+            trace_digests.append((row.id, row.run_id, row.payload["trace_digest"]))
     mismatches: set[int] = set()
     if check_runs:
         for event_id, run_id, stored in digests:
@@ -284,18 +308,27 @@ def verify_chain(conn: Connection, *, check_runs: bool = False) -> ChainReport:
             current = None if run_id is None else current_review_digest(conn, run_id)
             if current is None or current != stored:
                 mismatches.add(event_id)
+        for event_id, run_id, stored in trace_digests:
+            current = None if run_id is None else current_trace_digest(conn, run_id)
+            if current is None or current != stored:
+                mismatches.add(event_id)
     return ChainReport(
         ok=not mismatches,
         rows=count,
         first_bad_id=None,
         runs_checked=len(digests) if check_runs else 0,
         reviews_checked=len(review_digests) if check_runs else 0,
+        traces_checked=len(trace_digests) if check_runs else 0,
         run_mismatch_ids=sorted(mismatches),
     )
 
 
 def _event_payload(
-    result: CaseResult, run_id: str, digest: str, review: Mapping[str, Any] | None
+    result: CaseResult,
+    run_id: str,
+    digest: str,
+    review: Mapping[str, Any] | None,
+    trace_row: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": result.status,
@@ -316,6 +349,8 @@ def _event_payload(
     if review is not None:
         payload["review_verdict"] = review["verdict"]
         payload["review_digest"] = review_digest(review)
+    if trace_row is not None:
+        payload["trace_digest"] = trace_digest(trace_row)
     return payload
 
 
@@ -342,6 +377,25 @@ def _review_row(result: CaseResult, run_id: str) -> dict[str, Any] | None:
     }
 
 
+def trace_row(result: CaseResult, run_id: str) -> dict[str, Any]:
+    """The run_traces row for a case result: the capped maker and checker traces and the
+    case card (harness.run_traces)."""
+    stored, card = stored_trace(result)
+    return {
+        "run_id": run_id,
+        "trace": _jsonable(stored.model_dump(mode="json")),
+        "case_card": None if card is None else _jsonable(card),
+        "created_at": datetime.now(UTC),
+    }
+
+
+def insert_trace_row(conn: Connection, row: Mapping[str, Any]) -> None:
+    """Write one run_traces row. Used by record_case_result and by evals.backfill_traces for
+    runs recorded before run_traces existed (those get no event, see the module docstring)."""
+    with _atomic(conn):
+        conn.execute(insert(RunTraceRow).values(**row))
+
+
 def record_case_result(
     conn: Connection,
     result: CaseResult,
@@ -350,11 +404,13 @@ def record_case_result(
     prompt: LoadedPrompt,
     eval_run_id: str | None = None,
     trace_path: str | None = None,
+    store_trace: bool = True,
 ) -> str:
     """Write agent_runs, model_calls, the checker's agent_reviews row (when the run was
-    reviewed) and one case event in one transaction. Returns run_id. The rows are written once
-    and never updated (triggers refuse it); the event carries their run_digest and, for a
-    reviewed run, the review_digest."""
+    reviewed), the run_traces row (unless store_trace is False) and one case event in one
+    transaction. Returns run_id. The rows are written once and never updated (triggers refuse
+    it); the event carries their run_digest and, when present, the review_digest and the
+    trace_digest."""
     run_id = str(uuid.uuid4())
     event = "proposal_created" if result.status == "proposed" else "human_review_created"
     run: dict[str, Any] = {
@@ -401,13 +457,16 @@ def record_case_result(
         review = _review_row(result, run_id)
         if review is not None:
             conn.execute(insert(AgentReview).values(**review))
+        traced = trace_row(result, run_id) if store_trace else None
+        if traced is not None:
+            insert_trace_row(conn, traced)
         append_case_event(
             conn,
             actor=AGENT_RUNNER_ACTOR,
             event=event,
             case_id=result.case_id,
             run_id=run_id,
-            payload=_event_payload(result, run_id, run_digest(run, calls), review),
+            payload=_event_payload(result, run_id, run_digest(run, calls), review, traced),
         )
     return run_id
 
@@ -542,7 +601,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print(
         f"chain ok, {report.rows} rows, {report.runs_checked} run digests checked, "
-        f"{report.reviews_checked} review digests checked"
+        f"{report.reviews_checked} review digests checked, "
+        f"{report.traces_checked} trace digests checked"
     )
     if report.run_mismatch_ids:
         print(f"run records changed for case_events ids: {report.run_mismatch_ids}")

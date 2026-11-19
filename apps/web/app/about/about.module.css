@@ -1,0 +1,39 @@
+/* About page: the harness diagram beside the steps it draws, stacked on narrow screens. */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
+  gap: 1.5rem 3rem;
+  align-items: start;
+  margin-top: 1.5rem;
+}
+
+.figure {
+  margin: 0;
+  position: sticky;
+  top: 1rem;
+}
+
+.figure figcaption {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+}
+
+.honest {
+  display: block;
+  margin-top: 0.35rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--brick);
+}
+
+@media (max-width: 52rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .figure {
+    position: static;
+    max-width: 26rem;
+  }
+}

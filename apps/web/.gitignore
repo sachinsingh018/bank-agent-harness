@@ -1,2 +1,7 @@
 next-env.d.ts
 *.tsbuildinfo
+
+# Build and test output
+build-output.txt
+test-results/
+playwright-report/

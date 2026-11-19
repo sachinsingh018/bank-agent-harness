@@ -10,6 +10,35 @@ on. `/evals` lists recorded eval runs (counts and rates only) with expandable sc
 `/about` explains the flow in plain words. The web app talks to the API from the server side
 only, so the reviewer token never reaches the browser.
 
+## Bundle mode (the public site)
+
+By default the showcase pages (`/`, `/watch`, `/watch/<run id>`, `/results`, `/about`) read the
+recorded runs committed in `content/showcase/v1` and need no API: this is bundle mode, and it is
+what the public site runs. `SHOWCASE_SOURCE=api` switches them to the live API for local work;
+put it in `.env.local` (gitignored), for example:
+
+```bash
+# apps/web/.env.local
+SHOWCASE_SOURCE=api
+API_BASE_URL=http://localhost:8000
+```
+
+Leave `.env.local` out (or remove `SHOWCASE_SOURCE`) before a bundle mode build, since `next
+build` reads it too. Share titles, descriptions, the favicon (`app/icon.svg`) and the Open Graph
+images (`app/opengraph-image.tsx` and one per run) are drawn at build time with `next/og`, using
+its built-in font, so the build fetches nothing. Image URLs use the production domain from `VERCEL_PROJECT_PRODUCTION_URL`, which Vercel
+sets automatically; locally they point at localhost.
+
+Browser tests (Playwright plus axe) run against a production build in bundle mode, with the API
+URL pointing at a closed port on purpose:
+
+```bash
+npx playwright install chromium          # once; system libraries: sudo npx playwright install-deps
+npm run build 2>&1 | tee build-output.txt
+npm run check:static                     # the public routes must be static
+npx playwright test                      # starts next start on port 3100 and stops it after
+```
+
 ## Run locally
 
 Use the local database only (host `db` in the Codespace), never the remote one.

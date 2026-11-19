@@ -1,7 +1,7 @@
 """Test helper: remove the records a test wrote, so the local test database stays tidy.
 
-case_events, agent_runs, model_calls, agent_reviews and corrections refuse DELETE, so the
-cleanup turns their user triggers off inside one transaction (allowed for the table owner,
+case_events, agent_runs, model_calls, agent_reviews, run_traces and corrections refuse DELETE,
+so the cleanup turns their user triggers off inside one transaction (allowed for the table owner,
 the local postgres test role), deletes only the rows added after the snapshot (the tail of
 the chain, so the chain stays valid) and turns the triggers back on. Tests only: it refuses
 any engine whose URL is not local, and a static test keeps non-test code from importing
@@ -21,10 +21,18 @@ from harness.db.records_models import (
     Correction,
     EvalResult,
     EvalRun,
+    RunTraceRow,
 )
 from harness.db.session import is_local_url
 
-APPEND_ONLY_TABLES = ("case_events", "agent_runs", "model_calls", "agent_reviews", "corrections")
+APPEND_ONLY_TABLES = (
+    "case_events",
+    "agent_runs",
+    "model_calls",
+    "agent_reviews",
+    "run_traces",
+    "corrections",
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +65,7 @@ def remove_since(engine: Engine, snap: RecordsSnapshot) -> None:
         )
         conn.execute(delete(CaseEvent).where(CaseEvent.id > snap.max_event_id))
         conn.execute(delete(AgentReview).where(AgentReview.run_id.not_in(snap.run_ids)))
+        conn.execute(delete(RunTraceRow).where(RunTraceRow.run_id.not_in(snap.run_ids)))
         conn.execute(delete(AgentRun).where(AgentRun.run_id.not_in(snap.run_ids)))
         for table in APPEND_ONLY_TABLES:
             conn.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER USER"))
