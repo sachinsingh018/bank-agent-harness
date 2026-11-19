@@ -701,8 +701,8 @@ def _checks_explanation(checks: list[CheckOut]) -> str:
         detail = f": {' and '.join(said)}" if said else ""
         return f"All {_plural(len(checks), 'check')} passed{detail}."
     return (
-        f"{len(failed)} of {_plural(len(checks), 'check')} failed, so a person has to look at "
-        "this case."
+        f"{len(failed)} of {_plural(len(checks), 'check')} failed, so the case is routed to "
+        "analyst review."
     )
 
 
@@ -895,18 +895,20 @@ def _outcome_step(steps: _Steps, run: Mapping[str, Any]) -> None:
     claims = claims_of(findings)
     rec = _str(_dict(findings).get("recommendation"))
     if status == "proposed":
-        verb = {"escalate": "escalate this alert", "close": "close this alert"}.get(
-            rec or "", "act on this alert"
+        verb = {"escalate": "escalating this alert", "close": "closing this alert"}.get(
+            rec or "", "an action on this alert"
         )
         explanation = (
-            f"The harness proposes to {verb}. A person still has to approve it before anything "
-            "happens (four-eyes)."
+            f"The harness recommends {verb}. An analyst still has to approve it before "
+            "anything happens (four-eyes)."
         )
-        title = "Proposed to a person"
+        title = "Recommendation sent to an analyst"
     else:
-        why = REASON_TEXT.get(reason or "", "it needs a person's judgement")
-        explanation = f"The case goes to a person because {why}. Nothing is closed automatically."
-        title = "Sent to a person"
+        why = REASON_TEXT.get(reason or "", "it needs an analyst's judgement")
+        explanation = (
+            f"The case is routed to analyst review because {why}. Nothing is closed automatically."
+        )
+        title = "Routed to analyst review"
     steps.add(
         kind="outcome",
         actor="harness",

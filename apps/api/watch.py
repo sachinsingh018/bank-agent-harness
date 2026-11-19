@@ -89,12 +89,12 @@ def teaser(status: str, reason: str | None, recommendation: str | None, tool_ste
     """One plain line about how the case went, written by code."""
     calls = f"{tool_steps} tool call{'' if tool_steps == 1 else 's'}"
     if status == "proposed":
-        verb = {"escalate": "proposed to escalate", "close": "proposed to close"}.get(
-            recommendation or "", "made a proposal"
+        verb = {"escalate": "recommended escalation", "close": "recommended closure"}.get(
+            recommendation or "", "made a recommendation"
         )
-        return f"{calls}, then {verb}. A person has the final say."
-    why = REASON_TEXT.get(reason or "", "it needed a person")
-    return f"{calls}, then sent to a person: {why}."
+        return f"{calls}, then {verb}. An analyst makes the final decision."
+    why = REASON_TEXT.get(reason or "", "it needed an analyst")
+    return f"{calls}, then routed to analyst review: {why}."
 
 
 @router.get("/showcase", response_model=ShowcasePage)

@@ -141,7 +141,9 @@ def test_showcase_lists_only_runs_with_stored_steps(
     assert item["alert"]["detector"] == "fan-out"
     assert item["alert"]["detector_label"]
     assert len(item["graph"]["nodes"]) == 4 and len(item["graph"]["edges"]) == 3
-    assert item["teaser"] == "1 tool call, then proposed to close. A person has the final say."
+    assert item["teaser"] == (
+        "1 tool call, then recommended closure. An analyst makes the final decision."
+    )
 
 
 def test_steps_endpoint_replays_a_run(client: TestClient, harness_engine: Engine) -> None:
