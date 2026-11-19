@@ -144,7 +144,7 @@ def test_runner_and_scorer_end_to_end(
     ):
         assert key in manifest, key
     assert set(manifest["git"]) == {"commit", "dirty"}
-    assert manifest["prompt"]["version"] == "v3" and len(manifest["prompt"]["sha256"]) == 64
+    assert manifest["prompt"]["version"] == "v4" and len(manifest["prompt"]["sha256"]) == 64
     assert manifest["model"] == {"profile": "scripted", "provider": "scripted", "model": "scripted"}
     assert manifest["dataset"]["ruleset_version"] == EVAL_VERSION
     assert len(manifest["dataset"]["sha256"]) == 64
@@ -394,7 +394,7 @@ def test_record_run_copies_a_run_dir_into_the_records_tables(
             assert run.prompt_sha256 == manifest["prompt"]["sha256"]
             runs = conn.execute(select(AgentRun).where(AgentRun.eval_run_id == eval_run_id)).all()
             assert {r.case_id for r in runs} == set(eval_alert_ids[:2])
-            assert all(r.profile == "scripted" and r.prompt_version == "v3" for r in runs)
+            assert all(r.profile == "scripted" and r.prompt_version == "v4" for r in runs)
             run_ids = [r.run_id for r in runs]
             calls = conn.execute(
                 select(func.count()).where(ModelCall.run_id.in_(run_ids))
