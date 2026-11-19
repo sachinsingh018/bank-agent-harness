@@ -37,3 +37,4 @@ Finance terms, added as they come up.
 - **Development and held-out alerts:** development alerts are the ones looked at while improving prompts; held-out alerts are kept aside and only used for a final, fairer test. Scores on development alerts can be optimistic.
 - **Intaglio:** the engraved printing used for banknotes and share certificates: ink sits in fine cut lines, so it feels raised. The site's green accent and its favicon and share images borrow the look.
 - **Guilloche:** the fine, interlaced wave patterns printed on banknotes and cheques to make copying hard. The site uses a guilloche line as a section break and on its share images.
+- **Trace (run trace):** the recorded steps of one agent run: what it asked the tools, what came back and what it answered. The site replays traces step by step.
