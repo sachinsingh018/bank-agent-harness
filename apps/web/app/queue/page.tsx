@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { getQueue, type QueuePage, type QueueState } from "../../lib/api";
 import { loadErrorText } from "../../lib/errors";
@@ -11,6 +12,7 @@ import {
   saysKind,
 } from "../../lib/format";
 import { Meter, ReviewerWord, Says } from "../_ui/marks";
+import { isBundleMode } from "../../lib/source";
 
 const VIEWS: { state: QueueState; label: string }[] = [
   { state: "waiting", label: "Waiting" },
@@ -31,6 +33,8 @@ export default async function QueuePageView({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  // The public site has no API: these pages exist only in API mode.
+  if (isBundleMode()) notFound();
   const params = await searchParams;
   const state = toState(one(params.state));
   const cursor = one(params.cursor);

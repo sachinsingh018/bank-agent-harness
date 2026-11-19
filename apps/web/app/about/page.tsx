@@ -1,8 +1,6 @@
 import Link from "next/link";
 
 export const metadata = { title: "How it works | Alert desk" };
-// Rendered per request so the replay banner follows the server env, like every other page.
-export const dynamic = "force-dynamic";
 
 export default function AboutPage() {
   return (

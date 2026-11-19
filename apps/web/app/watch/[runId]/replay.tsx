@@ -6,6 +6,7 @@
 // End jump. Every explanation comes from the API, written by deterministic code.
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { ClaimOut, ReplayStep, RunSteps, StepKind } from "../../../lib/api";
@@ -279,10 +280,12 @@ function EndPanel({
   run,
   claim,
   onClaim,
+  caseLink,
 }: {
   run: RunSteps;
   claim: number | null;
   onClaim: (i: number | null) => void;
+  caseLink: boolean;
 }) {
   const outcome = run.steps[run.steps.length - 1];
   const checks = run.steps.find((s) => s.kind === "checks");
@@ -321,7 +324,9 @@ function EndPanel({
         </div>
       </div>
       <p className="end-links">
-        <Link href={`/queue/${encodeURIComponent(run.run_id)}`}>Open the full case</Link>
+        {caseLink && (
+          <Link href={`/queue/${encodeURIComponent(run.run_id)}`}>Open the full case</Link>
+        )}
         <Link href="/about">How it works</Link>
         <Link href="/watch">Watch another case</Link>
       </p>
@@ -340,8 +345,17 @@ function activates(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && ["BUTTON", "A", "SUMMARY"].includes(target.tagName);
 }
 
-/** initialStep is 0-based; a link like /watch/<run>?step=5 opens at step 5. */
-export function Replay({ run, initialStep = 0 }: { run: RunSteps; initialStep?: number }) {
+/** initialStep is 0-based; a link like /watch/<run>?step=5 opens at step 5. caseLink shows
+ * the link to the queue case page, which exists only when the site reads the live API. */
+export function Replay({
+  run,
+  initialStep = 0,
+  caseLink = true,
+}: {
+  run: RunSteps;
+  initialStep?: number;
+  caseLink?: boolean;
+}) {
   const steps = run.steps;
   const last = steps.length - 1;
   const [index, setIndex] = useState(Math.max(0, Math.min(last, initialStep)));
@@ -533,7 +547,7 @@ export function Replay({ run, initialStep = 0 }: { run: RunSteps; initialStep?: 
               Press Play to watch the whole investigation, or Next to go one step at a time.
             </p>
           )}
-          {atEnd && <EndPanel run={run} claim={claim} onClaim={setClaim} />}
+          {atEnd && <EndPanel run={run} claim={claim} onClaim={setClaim} caseLink={caseLink} />}
         </section>
 
         <aside className="board" aria-label="Evidence board">
@@ -562,5 +576,19 @@ export function Replay({ run, initialStep = 0 }: { run: RunSteps; initialStep?: 
         </aside>
       </div>
     </div>
+  );
+}
+
+/** The 0-based step to open at from a 1-based ?step= value; the first step otherwise. */
+function startAt(asked: number, count: number): number {
+  return Number.isInteger(asked) ? Math.min(Math.max(asked, 1), count) - 1 : 0;
+}
+
+/** The replay opened at the step in the URL, so /watch/<run>?step=5 opens at step 5. Render it
+ * inside a Suspense boundary: reading the query on the client keeps the page static. */
+export function StepFromUrl({ run, caseLink }: { run: RunSteps; caseLink: boolean }) {
+  const asked = Number(useSearchParams().get("step"));
+  return (
+    <Replay run={run} initialStep={startAt(asked, run.steps.length)} caseLink={caseLink} />
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { webDecisionsEnabled } from "../lib/flags";
+import { isBundleMode } from "../lib/source";
 import "./globals.css";
 
 // One family with the variable width axis: normal width for body, condensed for headings.
@@ -21,6 +22,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // The public site (bundle mode) links only to pages that work without the API.
+  const live = !isBundleMode();
   return (
     <html lang="en" className={archivo.variable}>
       <body>
@@ -34,9 +37,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </Link>
             <nav aria-label="Main">
               <Link href="/watch">Watch</Link>
-              <Link href="/queue">Queue</Link>
-              <Link href="/evals">Evals</Link>
-              <Link href="/lessons">Lessons</Link>
+              <Link href="/results">Results</Link>
+              {live && <Link href="/queue">Queue</Link>}
+              {live && <Link href="/evals">Evals</Link>}
+              {live && <Link href="/lessons">Lessons</Link>}
               <Link href="/about">How it works</Link>
             </nav>
           </div>

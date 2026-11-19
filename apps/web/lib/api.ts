@@ -3,6 +3,7 @@
 // is read from the server environment here and never reaches the browser, and is only sent
 // when WEB_DECISIONS_ENABLED is "1".
 
+import type { EdgeTransfer } from "./bundle-types";
 import { webDecisionsEnabled } from "./flags";
 
 export type QueueState = "waiting" | "decided" | "all";
@@ -387,6 +388,8 @@ export interface FlowEdge {
   count: number;
   txn_ids: number[];
   step: number;
+  /** The transfers behind the edge, from the showcase bundle. Absent from the live API. */
+  transfers?: EdgeTransfer[];
 }
 
 export interface FlowGraph {
@@ -417,6 +420,8 @@ export interface ReplayStep {
   ok: boolean | null;
   summary: string | null;
   raw: string | null;
+  /** True when the bundle export cut raw short. Absent from the live API. */
+  raw_truncated?: boolean;
   text: string | null;
   checks: CheckOut[];
   errors: string[];

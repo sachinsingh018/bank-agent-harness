@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { getRunSteps, getShowcase, type RunSteps } from "../lib/api";
+import type { RunSteps } from "../lib/api";
+import { getManifest, getRunSteps, getShowcase } from "../lib/data";
 import { patternLabel, pickFeatured } from "../lib/replay";
 import { Preview, type PreviewStep } from "./_ui/preview";
 
@@ -8,6 +9,11 @@ const PREVIEW_STEPS = 9;
 
 async function featuredRun(): Promise<RunSteps | null> {
   try {
+    const chosen = (await getManifest())?.featured;
+    if (chosen) {
+      const run = await getRunSteps(chosen);
+      if (run) return run;
+    }
     const featured = pickFeatured((await getShowcase(60)).items);
     return featured ? await getRunSteps(featured.run_id) : null;
   } catch {

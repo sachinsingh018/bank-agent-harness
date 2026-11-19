@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { ApiError, getRunSteps, type RunSteps } from "../../../lib/api";
+import type { RunSteps } from "../../../lib/api";
+import { getRunSteps, listBundleRunIds } from "../../../lib/data";
 import { loadErrorText } from "../../../lib/errors";
 import { isValidRunId } from "../../../lib/flags";
 import { formatSeconds, formatUsd } from "../../../lib/format";
 import { modelLabel, patternLabel } from "../../../lib/replay";
-import { Replay } from "./replay";
+import { isBundleMode } from "../../../lib/source";
+import { Replay, StepFromUrl } from "./replay";
 
 export const metadata: Metadata = {
   title: "Watch an investigation | Alert desk",
@@ -18,31 +21,31 @@ function duration(ms: number): string {
   return ms < 90_000 ? formatSeconds(ms) : `${Math.round(ms / 60_000)} min`;
 }
 
-/** The 0-based step to open at from a 1-based ?step= value; the first step otherwise. */
-function startAt(asked: number, count: number): number {
-  return Number.isInteger(asked) ? Math.min(Math.max(asked, 1), count) - 1 : 0;
+async function bundleParams(): Promise<{ runId: string }[]> {
+  return (await listBundleRunIds()).map((runId) => ({ runId }));
 }
 
-export default async function WatchRun({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ runId: string }>;
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
+/** Bundle mode prerenders every recorded run. API mode exports no generateStaticParams, so the
+ * route renders on request as before: an empty list would make it a static route whose live
+ * API fetches fail at runtime. */
+export const generateStaticParams = isBundleMode() ? bundleParams : undefined;
+
+export default async function WatchRun({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
-  const query = await searchParams;
-  const asked = Number(Array.isArray(query.step) ? query.step[0] : query.step);
   if (!isValidRunId(runId)) notFound();
 
-  let run: RunSteps | null = null;
+  let run: RunSteps | null | undefined;
   let error: string | null = null;
   try {
     run = await getRunSteps(runId);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) notFound();
     error = loadErrorText(err, "investigation");
   }
+  // Outside the try: notFound() works by throwing.
+  if (run === null) notFound();
+
+  // The queue case page exists only in API mode.
+  const caseLink = !isBundleMode();
 
   if (!run) {
     return (
@@ -73,7 +76,10 @@ export default async function WatchRun({
           {formatUsd(run.cost_usd)}. Press play, or step through with the arrow keys.
         </p>
       </header>
-      <Replay run={run} initialStep={startAt(asked, run.steps.length)} />
+      {/* The replay reads ?step= on the client, so the page itself stays static. */}
+      <Suspense fallback={<Replay run={run} caseLink={caseLink} />}>
+        <StepFromUrl run={run} caseLink={caseLink} />
+      </Suspense>
     </>
   );
 }

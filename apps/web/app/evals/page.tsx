@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import {
   getEval,
@@ -18,6 +19,7 @@ import {
   shortHash,
 } from "../../lib/format";
 import { isValidEvalRunId } from "../../lib/flags";
+import { isBundleMode } from "../../lib/source";
 
 export const metadata = { title: "Evals | Alert desk" };
 
@@ -188,6 +190,8 @@ function RunDetailBlock({ detail }: { detail: EvalRunDetail | null }) {
 }
 
 export default async function EvalsPage() {
+  // The public site has no API: results come from the committed bundle instead.
+  if (isBundleMode()) redirect("/results");
   let runs: EvalRunSummary[] | null = null;
   let error: string | null = null;
   try {

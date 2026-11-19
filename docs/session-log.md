@@ -4,6 +4,12 @@ Start here in a new chat. This is a summary, not a raw transcript. The repo is p
 
 Update this file at the end of each working session. Do not track setup status here: hosting, database and secrets are managed outside the repo.
 
+## UI showpiece (2026-11-19, branch ui-showpiece)
+- Plan `docs/plans/ui-showpiece.md`, prompt `docs/notes/trythis.md`. Safety: local tag `pre-ui-showpiece` (97e2726) and pushed branch `backup/pre-ui-showpiece`. main not pushed.
+- S1a done (b86d0db): `evals/export_showcase.py` writes `apps/web/content/showcase/v1` (8 curated runs, about 480 KB, compact JSON because indented run 61e56e79 was over 120 KB). Decision 0008. Rerun: `python -m evals.export_showcase --database-url <local> --export-date <date> --git-commit <sha> --out apps/web/content/showcase/v1`.
+- S1b done: `lib/data.ts` switches bundle (default) or api via `SHOWCASE_SOURCE`; public routes static; private routes 404 in bundle mode; case file sections in `app/_ui/case-file.tsx` (queue HTML byte-identical before and after); Playwright plus axe (14 tests) and a static route check in CI. `playwright-core` is pinned by an npm override to match `@playwright/test` 1.64.1.
+- Open: run 823c8309 holds em dashes in the model's own recorded text (kept as recorded, owner to confirm). Next: owner approves pushing ui-showpiece for a Vercel preview, then S2 (owner decisions), then S3 to S6.
+
 ## Current state (2026-11-16)
 - M2 is functionally complete: steps 1 to 8 of `docs/plans/agent-loop.md` built, plus the first real model runs (step 7) on the free OpenRouter profile (`nvidia/nemotron-3-ultra-550b-a55b:free`, free tier 50 requests a day, about 8 requests per alert).
 - Run 20261116T014628Z-c9d334 (prompt v1, 3 smoke alerts): 1 proposed, 1 `limit_output` (reasoning model spent all 8,000 output tokens thinking), 1 `verifier_failed` (wrong sums caught by the arithmetic verifier).
