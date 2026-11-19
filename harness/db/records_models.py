@@ -156,6 +156,24 @@ class AgentReview(Base):
     )
 
 
+class RunTraceRow(Base):
+    """The stored steps of one agent run, for the replay pages (docs/plans/investigation-replay.md).
+    Append-only (a trigger refuses UPDATE, DELETE and TRUNCATE). trace is a
+    harness.run_traces.StoredTrace (maker and checker RunTrace, tool result text capped);
+    case_card is the module's case tool result as the agent first read it (the alert for AML),
+    or None. A separate table, so run digests stay valid; the case event of a run recorded
+    with its trace carries trace_digest."""
+
+    __tablename__ = "run_traces"
+
+    run_id: Mapped[str] = mapped_column(Text, ForeignKey("agent_runs.run_id"), primary_key=True)
+    trace: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    case_card: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now()
+    )
+
+
 class CaseEvent(Base):
     """Append-only audit log. Every row carries the hash of the row before it."""
 

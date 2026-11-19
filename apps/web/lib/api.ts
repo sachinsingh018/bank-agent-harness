@@ -344,6 +344,132 @@ export interface EvalRunDetail extends EvalRunSummary {
   score: ScoreOut | null;
 }
 
+// Watch an investigation (GET /showcase, GET /runs/{id}/steps). Recorded runs replayed as
+// steps; every explanation is written by deterministic code in the API, not by a model.
+
+export type StepKind =
+  | "alert"
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "retry"
+  | "checks"
+  | "review"
+  | "outcome";
+export type StepActor = "rule" | "agent" | "tools" | "harness" | "reviewer";
+
+export interface AlertCard {
+  alert_id: string;
+  detector: string | null;
+  detector_label: string | null;
+  summary: string | null;
+  anchor: string | null;
+  txn_count: number | null;
+  account_count: number | null;
+  window_start: string | null;
+  window_end: string | null;
+}
+
+export interface FlowNode {
+  id: string;
+  bank: number;
+  acct: string;
+  role: "anchor" | "alert" | "found";
+  x: number;
+  y: number;
+  step: number;
+}
+
+export interface FlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  count: number;
+  txn_ids: number[];
+  step: number;
+}
+
+export interface FlowGraph {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  hidden_accounts: number;
+}
+
+export interface CheckOut {
+  name: string;
+  passed: boolean;
+  errors: string[];
+}
+
+export interface ClaimOut {
+  statement: string;
+  txn_ids: number[];
+}
+
+export interface ReplayStep {
+  index: number;
+  kind: StepKind;
+  actor: StepActor;
+  title: string;
+  explanation: string;
+  tool: string | null;
+  arguments: Record<string, unknown> | null;
+  ok: boolean | null;
+  summary: string | null;
+  raw: string | null;
+  text: string | null;
+  checks: CheckOut[];
+  errors: string[];
+  reasons: string[];
+  claims: ClaimOut[];
+  verdict: string | null;
+  status: string | null;
+  reason: string | null;
+  recommendation: string | null;
+  confidence: number | null;
+  typology: string | null;
+  narrative: string | null;
+  txn_ids: number[];
+}
+
+export interface RunSteps {
+  run_id: string;
+  case_id: string;
+  module: string;
+  created_at: string;
+  status: string;
+  reason: string | null;
+  model: ModelInfo;
+  eval_run_id: string | null;
+  tool_steps: number;
+  wall_ms: number;
+  cost_usd: string;
+  alert: AlertCard;
+  steps: ReplayStep[];
+  graph: FlowGraph;
+}
+
+export interface ShowcaseItem {
+  run_id: string;
+  case_id: string;
+  created_at: string;
+  status: string;
+  reason: string | null;
+  recommendation: string | null;
+  confidence: number | null;
+  typology: string | null;
+  review_verdict: ReviewState | null;
+  tool_steps: number;
+  model: ModelInfo;
+  alert: AlertCard;
+  graph: FlowGraph;
+  teaser: string;
+}
+
+export interface ShowcasePage {
+  items: ShowcaseItem[];
+}
+
 /** status 0 means the API could not be reached. detail is the API's generic message; errors
  * lists the reasons of a 422 (failed checks or invalid fields), empty otherwise. */
 export class ApiError extends Error {
@@ -448,4 +574,12 @@ export function postDecision(runId: string, body: DecisionRequest): Promise<Deci
     headers,
     body: JSON.stringify(body),
   });
+}
+
+export function getShowcase(limit = 200): Promise<ShowcasePage> {
+  return request<ShowcasePage>(`/showcase?limit=${String(limit)}`);
+}
+
+export function getRunSteps(runId: string): Promise<RunSteps> {
+  return request<RunSteps>(`/runs/${encodeURIComponent(runId)}/steps`);
 }

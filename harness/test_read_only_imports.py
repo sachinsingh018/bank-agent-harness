@@ -19,6 +19,7 @@ RECORDS_IMPORTERS = {
     ROOT / "evals" / "run_aml_agent.py",
     ROOT / "evals" / "aml_agent_score.py",
     ROOT / "evals" / "record_run.py",
+    ROOT / "evals" / "backfill_traces.py",  # adds run_traces rows only, never agent code
     # The human approval flow: appends decision events, never agent code.
     ROOT / "apps" / "api" / "queue.py",
     ROOT / "apps" / "api" / "deps.py",

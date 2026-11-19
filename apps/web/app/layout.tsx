@@ -29,10 +29,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </a>
         <header className="site-header">
           <div className="bar">
-            <Link href="/queue" className="brand">
+            <Link href="/" className="brand">
               Alert desk
             </Link>
             <nav aria-label="Main">
+              <Link href="/watch">Watch</Link>
               <Link href="/queue">Queue</Link>
               <Link href="/evals">Evals</Link>
               <Link href="/lessons">Lessons</Link>
