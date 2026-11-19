@@ -58,3 +58,16 @@ input = "0"
 output = "0"
 cache_read = "0"
 cache_write = "0"
+
+# Free reviewer from a different model family, for an independent second check.
+# Free models change often; swap when it disappears. Chosen 2026-11-19.
+[profiles.openrouter-free-gemma]
+provider = "openrouter"
+model = "google/gemma-4-31b-it:free"
+max_output_tokens = 16000
+
+[profiles.openrouter-free-gemma.prices]
+input = "0"
+output = "0"
+cache_read = "0"
+cache_write = "0"
