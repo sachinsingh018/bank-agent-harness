@@ -254,6 +254,9 @@ accounts, transactions, alerts, cases, case_events (append-only audit), evidence
 - Backend: Render free web service, auto-deploy from GitHub. It sleeps when idle, so the UI must handle a cold start gracefully. Agent jobs run in-process from the API; there is no separate background worker on the free tier. Large batch eval runs go through GitHub Actions instead.
 - Database: Neon, with separate dev and prod branches.
 
+### Future product direction (owner, 2026-11-19)
+- A user enters their own data through a polished input experience, then follows each processing step (investigation, checks, reviewer, decision) in a highly intuitive UI. Requires login, per user data isolation, input validation and spend limits before it can be public.
+
 ### Public demo
 - Replay mode for visitors: browse recorded cases, traces, eval results and benchmarks.
 - Only the owner (via Auth.js) can trigger live agent runs, so visitors cannot spend API credit.

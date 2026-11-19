@@ -84,3 +84,16 @@ input = "0"
 output = "0"
 cache_read = "0"
 cache_write = "0"
+
+# Cheap paid reviewer from a different model family (independent second check). About 0.002 USD
+# per review. DeepSeek: only synthetic or public data may be sent (CLAUDE.md). Chosen 2026-11-19.
+[profiles.openrouter-deepseek-reviewer]
+provider = "openrouter"
+model = "deepseek/deepseek-v4.1-flash-1017"
+max_output_tokens = 16000
+
+[profiles.openrouter-deepseek-reviewer.prices]
+input = "0.15"
+output = "0.60"
+cache_read = "0.15"
+cache_write = "0.15"
