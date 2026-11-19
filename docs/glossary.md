@@ -26,3 +26,8 @@ Finance terms, added as they come up.
 - **Data leak (in evaluation):** a clue in the test data that gives away the answer for a reason that would not exist in real life, so scores look better than they are.
 - **Audit log:** a record of who did what and when (agent proposals, human approvals), which nobody may change or delete afterwards. Regulators expect banks to keep one for every decision.
 - **Hash chain:** a way to make tampering visible: each record stores a fingerprint (hash) of itself plus the fingerprint of the record before it. Change one old record and every fingerprint after it no longer matches.
+- **False alarm:** an alert that turns out to be ordinary activity, the same thing as a false positive. Closing one saves an analyst work; closing a real case lets laundering through.
+- **Escalate and close:** the two answers to an alert. Escalate means "a person should look closer, maybe file a SAR"; close means "this looks harmless, no further action".
+- **Strict truth:** this project's rule for calling an alert real: at least half of its transfers must be labelled as laundering. A looser rule (any one laundering transfer) would count many more alerts as real.
+- **Rules baseline:** what the monitoring rules achieve on their own, used as the yardstick for the agent. Rules escalate every alert they raise, so they never close a real case but leave every false alarm to a person.
+- **Development and held-out alerts:** development alerts are the ones looked at while improving prompts; held-out alerts are kept aside and only used for a final, fairer test. Scores on development alerts can be optimistic.

@@ -1,44 +1,230 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
-import type { ResultsSplit } from "../../lib/bundle-types";
 import { getResults } from "../../lib/data";
+import {
+  humanReviewView,
+  REVIEW_REASONS,
+  rulesContext,
+  splitView,
+  type Outcome,
+  type SplitView,
+} from "../../lib/results-view";
+import { Attribution } from "../_ui/attribution";
+import { CountBar } from "../_ui/count-bar";
+import { Guilloche } from "../_ui/guilloche";
+import styles from "./results.module.css";
 
 export const metadata: Metadata = {
   title: "Results | Alert desk",
   description: "How the agent did on recorded development alerts, in plain counts.",
 };
 
-/** One split in plain words, or a short note when the export did not include it. */
-function splitText(split: ResultsSplit | null | undefined): string {
-  const c = split?.counts;
-  if (
-    typeof split?.n !== "number" ||
-    typeof c?.false_closed !== "number" ||
-    typeof c.false_total !== "number" ||
-    typeof c.real_closed !== "number" ||
-    typeof c.real_total !== "number"
-  ) {
-    return "not recorded";
-  }
+function escalated(o: Outcome): number {
+  return o.realTotal - o.realClosed + (o.falseTotal - o.falseClosed);
+}
+
+/** The agent and the rules on the same alerts, side by side, in counts. */
+function SplitTable({ view, caption }: { view: SplitView; caption: string }) {
+  const rows: { name: string; o: Outcome }[] = [];
+  if (view.rules) rows.push({ name: "Rules alone", o: view.rules });
+  rows.push({ name: "Agent, with a person on unclear cases", o: view.agent });
   return (
-    `${split.n} alerts. The agent would close ${c.false_closed} of ${c.false_total} false ` +
-    `alerts and ${c.real_closed} of ${c.real_total} real ones.`
+    <div className={`table-wrap ${styles.table}`}>
+      <table>
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Approach</th>
+            <th scope="col" className="num">
+              Escalated or sent to a person
+            </th>
+            <th scope="col" className="num">
+              False alarms closed
+            </th>
+            <th scope="col" className="num">
+              Real cases closed
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ name, o }) => (
+            <tr key={name}>
+              <th scope="row">{name}</th>
+              <td className="num">
+                {escalated(o)} of {view.n}
+              </td>
+              <td className="num">
+                {o.falseClosed} of {o.falseTotal}
+              </td>
+              <td className="num">
+                {o.realClosed} of {o.realTotal}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-// Placeholder until the results page is designed: always reads the committed bundle.
+function CountPair({ o }: { o: Outcome }) {
+  return (
+    <div className={styles.pair}>
+      <div className={styles.count}>
+        <p className={styles.figure}>
+          Closes <span className={`${styles.big} condensed`}>{o.falseClosed}</span> of{" "}
+          {o.falseTotal} false alarms
+        </p>
+        <CountBar part={o.falseClosed} total={o.falseTotal} tone="good" />
+      </div>
+      <div className={styles.count}>
+        <p className={styles.figure}>
+          and also <span className={`${styles.big} ${styles.miss} condensed`}>{o.realClosed}</span>{" "}
+          of {o.realTotal} real cases
+        </p>
+        <CountBar part={o.realClosed} total={o.realTotal} tone="miss" />
+      </div>
+    </div>
+  );
+}
+
 export default async function ResultsPage() {
   const results = await getResults();
+  const early = splitView(results?.splits?.early);
+  const all = splitView(results?.splits?.all);
+  const review = results ? humanReviewView(results) : null;
+  const rules171 = results ? rulesContext(results) : null;
+  const cutoff = results?.late_cutoff ?? null;
+  const late =
+    early && all
+      ? {
+          n: all.n - early.n,
+          real: all.agent.realTotal - early.agent.realTotal,
+        }
+      : null;
+
   return (
     <>
       <h1>Results</h1>
-      {results ? (
-        <ul className="plain">
-          <li>Early window: {splitText(results.splits?.early)}</li>
-          <li>All alerts: {splitText(results.splits?.all)}</li>
-        </ul>
-      ) : (
+      {!results || !early ? (
         <p className="notice">No results have been exported yet.</p>
+      ) : (
+        <>
+          <p className="lede">
+            The agent ran on {all?.n ?? early.n} recorded development alerts. A false alarm the
+            agent closes saves a person some work; a real case it closes is laundering that
+            would slip through. Both are shown together, because one without the other would
+            mislead.
+          </p>
+
+          <section aria-labelledby="early-title">
+            <h2 id="early-title">The headline: {early.n} early alerts</h2>
+            <p className="prose">
+              {early.agent.falseTotal} of these alerts were false alarms and{" "}
+              {early.agent.realTotal} were real laundering. The agent would propose to close{" "}
+              {early.agent.falseClosed} of the false alarms. It would also propose to close{" "}
+              {early.agent.realClosed} of the {early.agent.realTotal} real cases. That is why a
+              person approves every close.
+            </p>
+            <CountPair o={early.agent} />
+            <h3>Against the rules on the same {early.n} alerts</h3>
+            <p className="prose meta">
+              The rules escalate every alert they raise, so they close nothing and miss nothing
+              they raised.
+            </p>
+            <SplitTable view={early} caption={`Early alerts: rules and agent on ${early.n} alerts`} />
+          </section>
+
+          {all && (
+            <section aria-labelledby="all-title">
+              <h2 id="all-title">All {all.n} development alerts</h2>
+              <p className="prose">
+                Including the late alerts, the agent would close {all.agent.falseClosed} of{" "}
+                {all.agent.falseTotal} false alarms and {all.agent.realClosed} of{" "}
+                {all.agent.realTotal} real cases. These numbers look easier than the headline for
+                the reason below.
+              </p>
+              <SplitTable view={all} caption={`All development alerts: rules and agent on ${all.n} alerts`} />
+            </section>
+          )}
+
+          {cutoff && late && (
+            <section aria-labelledby="split-title">
+              <h2 id="split-title">Why early and late alerts are counted apart</h2>
+              <div className="prose">
+                <p>
+                  The transfers are synthetic. After {cutoff}, ordinary transfers in this data
+                  almost stop, while laundering keeps going. So an alert late in the data is
+                  very likely to be laundering just because of its date. Of the {late.n} late
+                  alerts, {late.real} are real; of the {early.n} early ones, only{" "}
+                  {early.agent.realTotal}.
+                </p>
+                <p>
+                  A real bank would not see this pattern, so it is a leak: a clue that makes
+                  scores look better for the wrong reason. The headline uses only alerts that
+                  end on or before {cutoff}, and the prompts never mention this date pattern.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {review && (
+            <section aria-labelledby="review-title">
+              <h2 id="review-title">Cases sent to a person</h2>
+              <p className="prose">
+                The harness sent {review.count} of the {all?.n ?? early.n} alerts to a person
+                instead of proposing an answer. They count as escalated above, because a person
+                looks at them.
+              </p>
+              {review.reasons.length > 0 && (
+                <ul className={styles.reasons}>
+                  {review.reasons.map((r) => (
+                    <li key={r.key}>
+                      <span className={`${styles.reasonCount} condensed`}>{r.count}</span>{" "}
+                      {REVIEW_REASONS[r.key] ?? r.key.replaceAll("_", " ")}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          <section aria-labelledby="read-title">
+            <h2 id="read-title">How to read these numbers</h2>
+            <ul className={`plain prose ${styles.notes}`}>
+              {(results.notes ?? []).map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+            {results.eval_run_id && (
+              <p className="meta">
+                Eval run {results.eval_run_id}
+                {results.prompt_version ? `, prompt ${results.prompt_version}` : ""}.
+              </p>
+            )}
+          </section>
+
+          {rules171 && (
+            <section aria-labelledby="context-title" className={styles.context}>
+              <h2 id="context-title">Context: the rules on all {rules171.alerts} alerts</h2>
+              <p className="prose">
+                The monitoring rules raised {rules171.alerts} alerts in total. Under strict truth{" "}
+                {rules171.real} were real and {rules171.false} were false alarms.
+              </p>
+              {rules171.population && <p className="prose meta">{rules171.population}</p>}
+              <p className="prose meta">
+                Do not add these to the numbers above: they count a different set of alerts.
+              </p>
+            </section>
+          )}
+
+          <Guilloche />
+          <Attribution />
+          <p className="meta">
+            Want to see one case end to end? <Link href="/watch">Watch an investigation</Link>.
+          </p>
+        </>
       )}
     </>
   );

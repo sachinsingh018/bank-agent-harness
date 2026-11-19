@@ -1,0 +1,27 @@
+/* Dot rows for counts. Filled dots are the alerts the agent would close; rings are the rest,
+ * so shape and colour both carry the meaning. */
+
+.bar {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.35rem 0;
+}
+
+.filled {
+  stroke: none;
+}
+
+.empty {
+  fill: none;
+  stroke: var(--steel);
+  stroke-width: 1.25;
+}
+
+.good .filled {
+  fill: var(--intaglio);
+}
+
+.miss .filled {
+  fill: var(--brick);
+}

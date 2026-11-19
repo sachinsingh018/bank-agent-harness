@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata = { title: "How it works | Alert desk" };
+import { Attribution } from "../_ui/attribution";
+import { Guilloche } from "../_ui/guilloche";
+import { HarnessDiagram } from "../_ui/harness-diagram";
+import styles from "./about.module.css";
+
+export const metadata: Metadata = {
+  title: "How it works | Alert desk",
+  description:
+    "The harness around the agent: read-only tools, checks in code, a reviewer agent, human approval, an audit trail, tracing and evals.",
+};
 
 export default function AboutPage() {
   return (
@@ -12,49 +22,75 @@ export default function AboutPage() {
         All data is synthetic.
       </p>
 
-      <ol className="steps">
-        <li>
-          <strong>Rules raise alerts.</strong> Simple monitoring rules watch the transfers and
-          raise an alert when they see a known pattern, such as money fanning out from one account
-          to many. Rules are fast but noisy: most alerts turn out to be ordinary activity.
-        </li>
-        <li>
-          <strong>The agent investigates with read-only tools.</strong> For each alert, the agent
-          looks up the account&apos;s transfers and its counterparties through tools that can only
-          read. It cannot change data, and it cannot see the answer key. It ends with an answer:
-          escalate or close, a confidence from 0 to 1, a short narrative and claims that cite real
-          transfers.
-        </li>
-        <li>
-          <strong>Fixed checks run on every answer.</strong> Before anyone sees the answer, plain
-          code checks it: the shape is right, every cited transfer exists and was looked up, and
-          every quoted amount and sum matches the data. If a check fails, the agent gets one more
-          try; after that the case goes to a person. Running out of steps, tokens or time also
-          sends it to a person. Nothing is ever closed automatically.
-        </li>
-        <li>
-          <strong>A reviewer agent takes a second look.</strong> A separate agent reads the answer
-          and the evidence with its own checklist, like a second analyst. If it rejects the
-          answer, or does not finish, the case goes to a person.
-        </li>
-        <li>
-          <strong>A person decides, and every step is logged.</strong> A person approves, edits or
-          rejects the answer and can save a short lesson for future cases. Every step, from the
-          agent&apos;s run to the human decision, is written to an append-only audit log that is
-          never changed or removed.
-        </li>
-      </ol>
+      <div className={styles.layout}>
+        <figure className={styles.figure}>
+          <HarnessDiagram describedBy="harness-steps" />
+          <figcaption className="meta">
+            The harness around the agent. Solid boxes act on the case; dotted boxes watch and
+            measure. The numbered steps say the same in words.
+          </figcaption>
+        </figure>
 
-      <h2>How much has been measured</h2>
+        <ol className="steps" id="harness-steps">
+          <li>
+            <strong>Rules raise an alert.</strong> Simple monitoring rules watch the transfers
+            and raise an alert when they see a known pattern, such as money fanning out from one
+            account to many. Rules are fast but noisy: most alerts turn out to be ordinary
+            activity.
+          </li>
+          <li>
+            <strong>The agent loop investigates with read-only tools.</strong> The agent asks for
+            the alert, the account&apos;s transfers and its counterparties through tools that
+            can only read. It cannot change data, and it cannot see the answer key. It ends with
+            an answer: escalate or close, a confidence from 0 to 1, a short narrative and claims
+            that cite real transfers. The loop is written by hand, with no agent framework.
+          </li>
+          <li>
+            <strong>Verifiers check every answer in code.</strong> Before anyone sees the
+            answer, plain code checks it: the shape is right, every cited transfer exists and
+            was looked up, and every quoted amount and sum matches the data. If a check fails,
+            the agent gets one retry; after that the case goes to a person. Running out of
+            steps, tokens or time also sends it to a person. Nothing is ever closed
+            automatically.
+          </li>
+          <li>
+            <strong>A reviewer agent takes a second look.</strong> A separate agent reads the
+            answer and the evidence with its own checklist, like a second analyst. If it rejects
+            the answer, or does not finish, the case goes to a person.{" "}
+            <span className={styles.honest}>
+              It is built, but it has not completed a review on the free models so far, because
+              they hit time and model limits.
+            </span>
+          </li>
+          <li>
+            <strong>A person approves, and the audit trail keeps it.</strong> A person approves,
+            edits or rejects the answer. Every step, from the agent&apos;s run to the human
+            decision, is written to an append-only audit log that is never changed or removed.
+          </li>
+          <li>
+            <strong>Tracing records every call.</strong> Each model call, tool call and check is
+            recorded with its timing and tokens. The replays on this site are built from these
+            records.
+          </li>
+          <li>
+            <strong>Evals score every change.</strong> Any change to prompts, tools, models or
+            the harness is run against a fixed, versioned set of alerts, and the results are
+            compared with the rules alone. See the <Link href="/results">results</Link>.
+          </li>
+        </ol>
+      </div>
+
+      <h2>What you can do on this site</h2>
       <div className="prose">
         <p>
-          Honestly, not much yet. So far only a few alerts have been run with a free model, in
-          small smoke tests of a handful of alerts each. Numbers on sets this small are indicative:
-          they show whether the pipeline works and which way things move, not how accurate the
-          agent is. Larger runs on a fixed, versioned set of alerts come next, and every result is
-          listed on the <Link href="/evals">Evals</Link> page as it is recorded.
+          This public site only replays recorded runs. No model is called while you watch, and
+          nothing you do here changes any data. <Link href="/watch">Watch an investigation</Link>{" "}
+          to step through one case, from the alert to the proposal a person has to approve.
         </p>
       </div>
+
+      <Guilloche />
+      <Attribution />
     </>
   );
 }
