@@ -6,7 +6,9 @@ import type { ReactNode } from "react";
 import { webDecisionsEnabled } from "../lib/flags";
 import { pageMeta, SITE_DESCRIPTION, SITE_NAME, siteUrl } from "../lib/meta";
 import { isBundleMode } from "../lib/source";
+import { GitHubIcon } from "./_ui/icons";
 import "./globals.css";
+import styles from "./layout.module.css";
 
 // One family with the variable width axis: normal width for body, condensed for headings.
 const archivo = Archivo({
@@ -42,6 +44,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               {live && <Link href="/evals">Evals</Link>}
               {live && <Link href="/lessons">Lessons</Link>}
               <Link href="/about">Methodology</Link>
+              <a
+                href="https://github.com/sachinsingh018/bank-agent-harness"
+                className={styles.navIcon}
+                aria-label="Source code on GitHub"
+                title="Source code on GitHub"
+                rel="noopener noreferrer"
+              >
+                <GitHubIcon />
+              </a>
             </nav>
           </div>
           {!webDecisionsEnabled() && (

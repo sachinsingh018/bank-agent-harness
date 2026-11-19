@@ -1,16 +1,86 @@
-/* Landing headline: false alarms closed shown right next to the real cases also closed. */
+/* Landing: plain-English hero with the mini-replay, the proof strip (false alarms closed next
+ * to real cases also closed), how it works, what the project shows, the stack and contact. */
 
-.quiet {
-  align-self: center;
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ------------------------------------------------------------------ hero */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: center;
+  padding: 0.75rem 0 2rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.title {
+  font-size: clamp(2rem, 1.25rem + 2.3vw, 2.75rem);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  margin: 0.35rem 0 0.85rem;
+  max-width: 24ch;
+}
+
+.titleAccent {
+  color: var(--intaglio);
+}
+
+.lede {
+  margin: 0;
+  max-width: 50ch;
+  font-size: var(--size-subhead);
+  color: var(--steel);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+  margin: 1.25rem 0 0;
+}
+
+.secondary {
+  font-weight: 600;
+  padding: 0.55rem 0;
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin: 1.25rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  max-width: 50ch;
+}
+
+.bylineLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 24px;
   font-weight: 600;
 }
 
-.headline {
+.preview {
+  align-self: center;
+}
+
+/* ------------------------------------------------------------------ proof */
+
+.proof {
   padding: 1.75rem 0 1.5rem;
   border-bottom: 1px solid var(--rule);
 }
 
-.headlineTitle {
+.proofTitle {
   margin: 0 0 1rem;
   max-width: 40ch;
 }
@@ -45,14 +115,165 @@
   color: var(--brick);
 }
 
+.plain {
+  margin: 1.25rem 0 0;
+  max-width: var(--prose);
+}
+
 .why {
-  margin: 1.25rem 0 0.25rem;
+  margin: 0.5rem 0 0.25rem;
   font-size: var(--size-subhead);
   font-weight: 650;
 }
 
+/* ------------------------------------------------------------------ sections */
+
+.section {
+  padding: 2rem 0 0.5rem;
+}
+
+.sectionTitle {
+  margin: 0 0 0.35rem;
+  font-size: var(--size-title);
+}
+
+.sectionLede {
+  margin: 0 0 1.25rem;
+  max-width: var(--prose);
+  color: var(--steel);
+}
+
+.steps {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5rem;
+  counter-reset: none;
+}
+
+.step {
+  border-top: 1px solid var(--ink);
+  padding-top: 0.75rem;
+}
+
+.stepIcon {
+  display: block;
+  color: var(--intaglio);
+  margin-bottom: 0.4rem;
+}
+
+.stepTitle {
+  margin: 0 0 0.3rem;
+  font-size: var(--size-subhead);
+  line-height: 1.2;
+}
+
+.stepN {
+  color: var(--intaglio);
+  font-weight: 700;
+  margin-right: 0.15rem;
+}
+
+.stepBody {
+  margin: 0;
+}
+
+.skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.skill {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rule);
+  border-top: 2px solid var(--intaglio);
+  border-radius: var(--radius-panel);
+  padding: 0.9rem 1rem;
+}
+
+.skillTitle {
+  margin: 0 0 0.35rem;
+  font-size: var(--size-subhead);
+  line-height: 1.2;
+  font-stretch: 75%;
+  font-variation-settings: "wdth" 75;
+}
+
+.skillBody {
+  margin: 0 0 0.75rem;
+  flex: 1 1 auto;
+}
+
+.skillLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  font-size: var(--size-meta);
+}
+
+.skillLinks a {
+  display: inline-block;
+  min-height: 24px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.chips {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chips li {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-mark);
+  padding: 0.2rem 0.6rem;
+  font-size: var(--size-meta);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ narrow */
+
+@media (max-width: 64rem) {
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skills {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 52rem) {
+  .hero,
   .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview {
+    width: 100%;
+    max-width: 36rem;
+  }
+}
+
+@media (max-width: 36rem) {
+  .steps,
+  .skills {
     grid-template-columns: minmax(0, 1fr);
   }
 }

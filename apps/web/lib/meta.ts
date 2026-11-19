@@ -9,7 +9,7 @@ import { outcomeLabel, outcomeOf, patternLabel } from "./replay";
 export const SITE_NAME = "AML Alert Desk";
 
 export const SITE_DESCRIPTION =
-  "Watch an AI agent investigate money laundering alerts step by step: read-only tools, checks in code, and an analyst approves every decision.";
+  "Banks flag huge numbers of suspicious transfers, and most turn out to be false alarms. This AI agent does the first investigation on synthetic bank data, code checks every transfer and figure it cites, and a person makes the final call.";
 
 /** Title, description and the matching Open Graph and Twitter fields for one page. */
 export function pageMeta(title: string, description: string): Metadata {
