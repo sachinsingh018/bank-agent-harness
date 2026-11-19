@@ -55,3 +55,13 @@ Notes:
 ### Reproducing
 
 Open the IBM AML dataset on Kaggle, create a notebook with the dataset attached, use the HI-Small files only, and rerun the steps above with seed 42.
+
+## apps/web/content/showcase/v1/ (showcase bundle)
+
+JSON files the public web site reads at build time (decision 0008).
+
+- **Size:** about 0.5 MB: `manifest.json`, `showcase.json`, `results.json` and one file per curated run under `runs/`, each under 120 KB.
+- **Made by:** `python -m evals.export_showcase --database-url <local url> --export-date <date> --git-commit <sha> --out apps/web/content/showcase/v1`, from the local database only. Two exports with the same inputs are byte-identical.
+- **Contents:** 8 real model runs on development alerts (steps, case file, graph edges with their transfers), the curated outcome labels and captions, and eval results from run 20261118T234719Z-cd5c6c.
+- **Source and license:** transfers come from the IBM synthetic AML slice above, so this bundle is also under CDLA Sharing 1.0 with the same attribution. No real customers, accounts or transactions.
+- **Left out on purpose:** scripted runs, held-out alerts, the label table, Langfuse trace ids, and raw step text beyond 2,000 characters.
