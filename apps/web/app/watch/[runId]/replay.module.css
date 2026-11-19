@@ -1,0 +1,289 @@
+/* The replay's new parts: view tabs, mode toggle, guided caption and progress, transfer chips
+   and technical details. Built on the tokens in globals.css. Motion scale: 120, 240, 480,
+   960 ms, all switched off under prefers-reduced-motion. */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+button.tab {
+  margin: 0 0 -1px;
+  padding: 0.45rem 0.9rem;
+  background: none;
+  color: var(--steel);
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+  font-weight: 600;
+}
+
+button.tab:hover {
+  color: var(--ink);
+}
+
+button.tab[aria-selected="true"] {
+  color: var(--ink);
+  border-color: var(--rule);
+  border-bottom: 2px solid var(--intaglio);
+  background: var(--paper);
+}
+
+.modes {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding-bottom: 0.4rem;
+}
+
+.modeNote {
+  margin: 0.4rem 0 0.25rem;
+}
+
+.casePanel {
+  margin-top: 1.25rem;
+}
+
+/* ---------------------------------------------------------------- guided progress and caption */
+
+.progress {
+  position: relative;
+  flex: 1 1 10rem;
+  height: 0.35rem;
+  background: var(--rule);
+  border-radius: var(--radius-mark);
+  overflow: hidden;
+}
+
+.progressDone {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--intaglio);
+  transition: width 240ms ease-out;
+}
+
+.progressStep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--intaglio) 55%, var(--paper));
+  transform-origin: left center;
+  animation-name: fill;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+@keyframes fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.caption {
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0.9rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--intaglio);
+  border-radius: var(--radius-panel);
+  /* Guilloche hairline: two fine crossing waves, like the edge of a banknote. */
+  background:
+    repeating-linear-gradient(
+      60deg,
+      transparent 0 6px,
+      color-mix(in srgb, var(--intaglio) 5%, transparent) 6px 7px
+    ),
+    repeating-linear-gradient(
+      -60deg,
+      transparent 0 6px,
+      color-mix(in srgb, var(--intaglio) 5%, transparent) 6px 7px
+    ),
+    var(--paper);
+}
+
+.captionMeta {
+  margin: 0;
+  color: var(--steel);
+  font-size: var(--size-meta);
+}
+
+.captionTitle {
+  margin: 0.1rem 0 0.2rem;
+  font-size: var(--size-title);
+  font-weight: 650;
+  line-height: 1.15;
+  font-stretch: 75%;
+  font-variation-settings: "wdth" 75;
+}
+
+.captionText {
+  margin: 0;
+  max-width: var(--prose);
+  font-size: 1.05rem;
+}
+
+/* ---------------------------------------------------------------- narration */
+
+.narrationTitle {
+  margin: 0;
+  font-size: var(--size-subhead);
+}
+
+.narrationNote {
+  margin: 0.1rem 0 0.9rem;
+}
+
+.notes h4 {
+  margin: 0.5rem 0 0;
+  font-size: var(--size-body);
+}
+
+.notes .meta {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- transfer chips */
+
+.chips {
+  list-style: none;
+  padding: 0;
+  margin: 0.35rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+button.chip {
+  margin: 0;
+  padding: 0.1rem 0.5rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-mark);
+  font-size: var(--size-meta);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+
+button.chip:hover,
+button.chip:focus-visible,
+.chipLit {
+  border-color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 12%, var(--paper));
+}
+
+button.chip[aria-pressed="true"] {
+  border-color: var(--signal);
+  border-left-width: 3px;
+}
+
+.chipKey {
+  color: var(--steel);
+}
+
+.chipMore {
+  align-self: center;
+  color: var(--steel);
+  font-size: var(--size-meta);
+}
+
+/* ---------------------------------------------------------------- technical details */
+
+.tech {
+  margin: 0.5rem 0 0.25rem;
+}
+
+.tech summary {
+  cursor: pointer;
+  color: var(--intaglio);
+  font-size: var(--size-meta);
+  font-weight: 600;
+}
+
+.techList {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.2rem 0.9rem;
+  margin: 0.5rem 0 0;
+  font-size: var(--size-meta);
+}
+
+.techList dt {
+  color: var(--steel);
+}
+
+.techList dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.code,
+.pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.techLabel {
+  margin: 0.6rem 0 0;
+  color: var(--steel);
+  font-size: var(--size-meta);
+}
+
+.pre {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0.3rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--intaglio);
+  border-radius: var(--radius-panel);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- board extras */
+
+.readout {
+  min-height: 2.6em;
+  margin: 0 0 0.5rem;
+  color: var(--steel);
+  font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.lgMoney {
+  fill: var(--signal);
+  stroke: var(--paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressDone,
+  button.chip {
+    transition: none;
+  }
+
+  .progressStep {
+    animation: none;
+    transform: scaleX(0);
+  }
+
+  .legendMotion {
+    display: none;
+  }
+}

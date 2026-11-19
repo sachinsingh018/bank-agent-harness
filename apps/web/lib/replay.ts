@@ -1,7 +1,8 @@
 // Small pure helpers for the watch pages. Safe to import from client components: no server
 // env, no fetch. Types come from api.ts as type-only imports.
 
-import type { FlowGraph, ShowcaseItem, StepActor } from "./api";
+import type { FlowGraph, ShowcaseItem, StepActor, StepKind } from "./api";
+import type { RunEffort, StepEffort, ToolEffort } from "./bundle-types";
 
 export const PATTERNS = [
   { key: "fan-out", label: "Fan-out" },
@@ -75,4 +76,74 @@ export function argText(value: unknown): string {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   if (text === undefined) return "";
   return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+}
+
+// ------------------------------------------------------------------ replay pacing and effort
+
+/** Guided mode plays the whole run in about this long. */
+export const GUIDED_TOTAL_MS = 60_000;
+
+/** Relative reading time per step kind; guided mode scales these to GUIDED_TOTAL_MS. */
+export const STEP_WEIGHT: Record<StepKind, number> = {
+  alert: 3400,
+  thinking: 3600,
+  tool_call: 2200,
+  tool_result: 2900,
+  retry: 3400,
+  checks: 3000,
+  review: 3400,
+  outcome: 0,
+};
+
+/** Milliseconds to stay on each step in guided mode, so the run lasts about total ms. The
+ * last step has no delay: the replay stops there. */
+export function guidedDelays(kinds: readonly StepKind[], total = GUIDED_TOTAL_MS): number[] {
+  const weights = kinds.map((k, i) => (i === kinds.length - 1 ? 0 : STEP_WEIGHT[k] || 1));
+  const sum = weights.reduce((a, b) => a + b, 0) || 1;
+  return weights.map((w) => Math.round((w / sum) * total));
+}
+
+/** Model effort and tool timing for one step, from the bundle effort block. */
+export function effortFor(
+  effort: RunEffort | null | undefined,
+  stepIndex: number,
+): { model: StepEffort | null; tool: ToolEffort | null } {
+  return {
+    model: effort?.per_step?.find((e) => e.step === stepIndex) ?? null,
+    tool: effort?.tools?.find((t) => t.step === stepIndex) ?? null,
+  };
+}
+
+const REVIEW_FAILURES: Record<string, string> = {
+  limit_time: "time limit",
+  limit_steps: "step limit",
+  limit_tokens: "token limit",
+  model_error: "model error",
+};
+
+/** Plain words for why the reviewer agent stopped, from its stored failure_reason. */
+export function reviewFailureText(reason: string | null | undefined): string {
+  const why = reason ? (REVIEW_FAILURES[reason] ?? reason.replaceAll("_", " ")) : null;
+  return why
+    ? `The reviewer agent did not finish (${why}).`
+    : "The reviewer agent did not finish.";
+}
+
+/** An amount with its currency, grouped for reading: "10,740.09 US Dollar". */
+export function amountText(amount: string, currency: string): string {
+  const n = Number(amount);
+  const value = Number.isFinite(n)
+    ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : amount;
+  return `${value} ${currency}`;
+}
+
+/** Recorded timestamps as "2022-09-06 17:24" (data time, no zone conversion). */
+export function shortTs(ts: string): string {
+  return ts.replace("T", " ").slice(0, 16);
+}
+
+/** Total tokens, in and out, as a grouped number. */
+export function tokenText(tokensIn: number, tokensOut: number): string {
+  return `${(tokensIn + tokensOut).toLocaleString("en-US")} tokens`;
 }

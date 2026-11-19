@@ -1,0 +1,50 @@
+/* The provenance strip above a recorded replay, built on the tokens in globals.css. */
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1.25rem;
+  margin: 0 0 0.25rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--rule);
+  font-size: var(--size-meta);
+}
+
+.badge {
+  margin: 0;
+  color: var(--intaglio);
+  font-weight: 650;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  margin: 0;
+}
+
+.facts div {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.facts dt {
+  color: var(--steel);
+}
+
+.facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.line {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--steel);
+}
+
+.download {
+  margin-left: 0.5rem;
+  font-weight: 600;
+}
