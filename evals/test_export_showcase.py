@@ -280,6 +280,16 @@ def _write_score(tmp_path: Path) -> ex.Sources:
         "baseline": {"false_strict": 7, "true_strict": 2, "raised": 9, "precision_strict": 0.2},
         "agent_with_human_review": {"strict": _strict(4, 1), "loose": {}},
         "human_review": {"count": 2},
+        "grounding": {"claims": 10, "grounded": 9, "rate": 0.9},
+    }
+    held_split = {**split, "review": {"reviewed": 0}}
+    held = {
+        "run_id": "eval-held",
+        "dataset": {"name": "heldout"},
+        "model": {"model": "free/model"},
+        "prompt": {"version": "v5"},
+        "late_cutoff": "2022-09-10",
+        "splits": {"early": held_split, "all": held_split, "late": held_split},
     }
     score = {
         "run_id": "eval-1",
@@ -303,8 +313,13 @@ def _write_score(tmp_path: Path) -> ex.Sources:
         },
     }
     (tmp_path / "score.json").write_text(json.dumps(score), encoding="utf-8")
+    (tmp_path / "held_score.json").write_text(json.dumps(held), encoding="utf-8")
     (tmp_path / "rules.json").write_text(json.dumps(rules), encoding="utf-8")
-    return ex.Sources(score=tmp_path / "score.json", rules_baseline=tmp_path / "rules.json")
+    return ex.Sources(
+        score=tmp_path / "score.json",
+        heldout_score=tmp_path / "held_score.json",
+        rules_baseline=tmp_path / "rules.json",
+    )
 
 
 def test_results_counts_and_notes(tmp_path: Path) -> None:
@@ -318,9 +333,36 @@ def test_results_counts_and_notes(tmp_path: Path) -> None:
     }
     assert "loose" not in out["splits"]["early"]["agent_with_human_review"]
     assert out["rules_171"]["alerts"] == 171 and "population" in out["rules_171"]
-    assert len(out["notes"]) == 6
+    assert len(out["notes"]) == 8
+    assert not any("no run on the held-out" in n for n in out["notes"])
+    assert any("v5 on the held-out alerts, v3 on the development" in n for n in out["notes"])
+    assert any("reviewer agent was off" in n for n in out["notes"])
     text = json.dumps(out)
     assert not any(d in text for d in DASHES)
+
+
+def test_results_heldout_block(tmp_path: Path) -> None:
+    sources = _write_score(tmp_path)
+    out = ex.build_results(sources)
+    assert out["headline_source"] == "heldout"
+    held = out["heldout"]
+    assert held["eval_run_id"] == "eval-held" and held["prompt_version"] == "v5"
+    assert held["dataset"] == "heldout" and held["model"] == "free/model"
+    assert set(held["splits"]) == {"early", "all"}
+    assert held["splits"]["early"]["counts"]["false_closed"] == 4
+    assert "loose" not in held["splits"]["all"]["agent_with_human_review"]
+    assert held["human_review"] == {"count": 2}
+    assert held["grounding"] == {"claims": 10, "grounded": 9, "rate": 0.9}
+    # The development block keeps its own run and shape.
+    assert out["eval_run_id"] == "eval-1" and out["prompt_version"] == "v3"
+    assert ex.dumps(out) == ex.dumps(ex.build_results(sources))
+
+
+def test_results_refuses_missing_heldout_score(tmp_path: Path) -> None:
+    sources = _write_score(tmp_path)
+    (tmp_path / "held_score.json").unlink()
+    with pytest.raises(ex.ExportError, match="held-out score file not found"):
+        ex.build_results(sources)
 
 
 def test_results_refuses_missing_score(tmp_path: Path) -> None:

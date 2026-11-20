@@ -197,11 +197,13 @@ def fx(local_engine: Engine, tmp_path: Path) -> Iterator[Fixture]:
     held = tmp_path / "held.json"
     dev.write_text(json.dumps({"alert_ids": [ids["good"], ids["scripted"], ids["no_file"]]}))
     held.write_text(json.dumps({"alert_ids": [ids["held"]]}))
+    scores = _write_score(tmp_path)
     sources = ex.Sources(
         dev_dataset=dev,
         heldout_dataset=held,
-        score=_write_score(tmp_path).score,
-        rules_baseline=tmp_path / "rules.json",
+        score=scores.score,
+        heldout_score=scores.heldout_score,
+        rules_baseline=scores.rules_baseline,
     )
     prompt = load_prompt(AML_SPEC.prompt)
     with local_engine.begin() as conn:
@@ -276,6 +278,10 @@ def test_export_is_allowlisted_and_deterministic(fx: Fixture, tmp_path: Path) ->
     assert manifest["export_date"] == "2026-11-19" and manifest["git_commit"] == "abc1234"
     showcase = json.loads(first["showcase.json"])
     assert [i["run_id"] for i in showcase] == [fx.good]
+    results = json.loads(first["results.json"])
+    assert results["headline_source"] == "heldout"
+    assert results["heldout"]["eval_run_id"] == "eval-held"
+    assert manifest["eval_run_id"] == results["eval_run_id"]
 
 
 def test_export_refuses_scripted_held_out_and_missing_file(fx: Fixture, tmp_path: Path) -> None:

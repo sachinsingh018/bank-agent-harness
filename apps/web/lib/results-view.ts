@@ -2,7 +2,7 @@
 // from the bundle; when a field is missing the reader returns null and the page hides that
 // part instead of showing a made up value.
 
-import type { Results, ResultsSplit } from "./bundle-types";
+import type { HeldoutResults, Results, ResultsSplit } from "./bundle-types";
 
 function num(record: unknown, key: string): number | null {
   if (record === null || typeof record !== "object") return null;
@@ -77,7 +77,7 @@ export interface HumanReviewView {
   reasons: { key: string; count: number }[];
 }
 
-export function humanReviewView(results: Results): HumanReviewView | null {
+export function humanReviewView(results: Results | HeldoutResults): HumanReviewView | null {
   const count = num(results.human_review, "count");
   if (count === null) return null;
   const raw = rec(results.human_review, "reasons") ?? {};
@@ -86,6 +86,23 @@ export function humanReviewView(results: Results): HumanReviewView | null {
     .map(([key, value]) => ({ key, count: value }))
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
   return { count, reasons };
+}
+
+export interface GroundingView {
+  claims: number;
+  grounded: number;
+}
+
+export function groundingView(held: HeldoutResults): GroundingView | null {
+  const claims = num(held.grounding, "claims");
+  const grounded = num(held.grounding, "grounded");
+  return claims === null || grounded === null ? null : { claims, grounded };
+}
+
+/** The held-out block when results.json says the headline comes from it, else null. */
+export function headlineHeldout(results: Results | null | undefined): HeldoutResults | null {
+  if (!results || results.headline_source !== "heldout") return null;
+  return results.heldout ?? null;
 }
 
 export interface RulesContext {

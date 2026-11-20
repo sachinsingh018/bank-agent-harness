@@ -62,6 +62,6 @@ JSON files the public web site reads at build time (decision 0008).
 
 - **Size:** about 0.5 MB: `manifest.json`, `showcase.json`, `results.json` and one file per curated run under `runs/`, each under 120 KB.
 - **Made by:** `python -m evals.export_showcase --database-url <local url> --export-date <date> --git-commit <sha> --out apps/web/content/showcase/v1`, from the local database only. Two exports with the same inputs are byte-identical.
-- **Contents:** 8 real model runs on development alerts (steps, case file, graph edges with their transfers), the curated outcome labels and captions, and eval results from run 20261118T234719Z-cd5c6c.
+- **Contents:** 8 real model runs on development alerts (steps, case file, graph edges with their transfers), the curated outcome labels and captions, and aggregate eval results from two runs: 20261118T234719Z-cd5c6c (development alerts, prompt v3) and 20261120T032954Z-00b166 (held-out alerts, prompt v5; decision 0010).
 - **Source and license:** transfers come from the IBM synthetic AML slice above, so this bundle is also under CDLA Sharing 1.0 with the same attribution. No real customers, accounts or transactions.
-- **Left out on purpose:** scripted runs, held-out alerts, the label table, Langfuse trace ids, and raw step text beyond 2,000 characters.
+- **Left out on purpose:** scripted runs, held-out alerts as replay cases (only their aggregate counts are included), the label table, Langfuse trace ids, and raw step text beyond 2,000 characters.

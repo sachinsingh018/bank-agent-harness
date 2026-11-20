@@ -4,12 +4,14 @@ Usage:
     python -m evals.export_showcase --database-url <local url> --export-date 2026-11-19 \
         --git-commit <sha> --out apps/web/content/showcase/v1
 
-Read only. It calls the existing API functions (list_showcase, get_run_steps, get_run)
-without changing them, on an engine whose every transaction is read only, and looks up edge
-transfers through the guarded tool engine. It refuses a non-local database, scripted runs,
-alerts outside the development list or inside the held-out list, runs whose results.jsonl is
-missing, and files over the size limits. Only allowlisted fields are written. Output is
-deterministic: sorted keys, fixed separators, trailing newline, no clock reads.
+Read only. It calls the existing API functions (get_run_steps, get_run) and builds showcase
+cards with the API's own helpers, without changing them, on an engine whose every transaction
+is read only, and looks up edge transfers through the guarded tool engine. It refuses a
+non-local database, scripted runs, alerts outside the development list or inside the held-out
+list, runs whose results.jsonl is missing, and files over the size limits. Held-out alerts
+appear only as aggregate eval counts in results.json, never as replay cases. Only allowlisted
+fields are written. Output is deterministic: sorted keys, fixed separators, trailing newline,
+no clock reads.
 """
 
 from __future__ import annotations
@@ -26,10 +28,11 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import Engine, create_engine, select
 
-from apps.api.queue import TRACE_FILE_NAME, RunDetail, get_run
-from apps.api.watch import MAX_SHOWCASE, RunSteps, ShowcaseItem, get_run_steps, list_showcase
+from apps.api.queue import TRACE_FILE_NAME, ModelInfo, RunDetail, get_run, review_state
+from apps.api.replay import alert_card, card_graph
+from apps.api.watch import RunSteps, ShowcaseItem, get_run_steps, teaser
 from harness.db.models import Alert
-from harness.db.records_models import AgentRun
+from harness.db.records_models import AgentReview, AgentRun, RunTraceRow
 from harness.db.session import DatabaseConnectionError, is_local_url
 from tools.aml.db import build_tool_engine, open_readonly
 from tools.aml.models import TransactionInput, TransferRecord
@@ -50,6 +53,7 @@ COMMIT_PATTERN = re.compile(r"^[0-9a-f]{7,40}$")
 DEV_DATASET = Path("evals/datasets/aml_alerts_dev_v1.json")
 HELDOUT_DATASET = Path("evals/datasets/aml_alerts_heldout_v1.json")
 SCORE_PATH = Path("evals/runs/20261118T234719Z-cd5c6c/score.json")
+HELDOUT_SCORE_PATH = Path("evals/runs/20261120T032954Z-00b166/score.json")
 RULES_BASELINE = Path("evals/baselines/aml_rules_v1.json")
 
 
@@ -144,6 +148,7 @@ class Sources:
     dev_dataset: Path = DEV_DATASET
     heldout_dataset: Path = HELDOUT_DATASET
     score: Path = SCORE_PATH
+    heldout_score: Path = HELDOUT_SCORE_PATH
     rules_baseline: Path = RULES_BASELINE
 
 
@@ -251,6 +256,58 @@ def check_run(
     if facts.ruleset_version is None:
         raise ExportError(f"run {run_id}: alert {facts.case_id} is not in the alerts table")
     return facts.ruleset_version
+
+
+def _finding(findings: Any, key: str) -> Any:
+    return findings.get(key) if isinstance(findings, dict) else None
+
+
+def showcase_items(engine: Engine, run_ids: Iterable[str]) -> dict[str, ShowcaseItem]:
+    """Showcase cards for the curated runs only, built the way GET /showcase builds them.
+    The API lists only the newest runs, so later eval runs would push curated runs off it."""
+    stmt = (
+        select(
+            AgentRun.run_id,
+            AgentRun.case_id,
+            AgentRun.created_at,
+            AgentRun.status,
+            AgentRun.reason,
+            AgentRun.findings,
+            AgentRun.tool_steps,
+            AgentRun.profile,
+            AgentRun.provider,
+            AgentRun.model,
+            RunTraceRow.case_card,
+            AgentReview.run_id.label("review_run_id"),
+            AgentReview.verdict.label("review_verdict"),
+        )
+        .join(RunTraceRow, RunTraceRow.run_id == AgentRun.run_id)
+        .outerjoin(AgentReview, AgentReview.run_id == AgentRun.run_id)
+        .where(AgentRun.run_id.in_(list(run_ids)))
+    )
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).all()
+    items: dict[str, ShowcaseItem] = {}
+    for r in rows:
+        recommendation = _finding(r.findings, "recommendation")
+        confidence = _finding(r.findings, "confidence")
+        items[r.run_id] = ShowcaseItem(
+            run_id=r.run_id,
+            case_id=r.case_id,
+            created_at=r.created_at,
+            status=r.status,
+            reason=r.reason,
+            recommendation=recommendation if isinstance(recommendation, str) else None,
+            confidence=float(confidence) if isinstance(confidence, int | float) else None,
+            typology=_finding(r.findings, "typology"),
+            review_verdict=review_state(r.review_verdict, r.review_run_id is not None),
+            tool_steps=r.tool_steps,
+            model=ModelInfo(profile=r.profile, provider=r.provider, model=r.model),
+            alert=alert_card(r.case_card, r.case_id),
+            graph=card_graph(r.case_card),
+            teaser=teaser(r.status, r.reason, recommendation, r.tool_steps),
+        )
+    return items
 
 
 # ------------------------------------------------------------------ transfers on edges
@@ -398,10 +455,29 @@ def _split(score: dict[str, Any], name: str) -> dict[str, Any]:
     }
 
 
+def _heldout(score: dict[str, Any]) -> dict[str, Any]:
+    """Counts from the held-out eval run, in the same shape as the development block. Only
+    aggregate counts: held-out alerts are never exported as replay cases."""
+    every = score["splits"]["all"]
+    return {
+        "eval_run_id": score["run_id"],
+        "dataset": score["dataset"]["name"],
+        "model": score["model"]["model"],
+        "prompt_version": score["prompt"]["version"],
+        "late_cutoff": score["late_cutoff"],
+        "headline": "early",
+        "splits": {name: _split(score, name) for name in ("early", "all")},
+        "human_review": every["human_review"],
+        "grounding": every["grounding"],
+    }
+
+
 def build_results(sources: Sources) -> dict[str, Any]:
     score = _read_json(sources.score, "score file")
+    held_score = _read_json(sources.heldout_score, "held-out score file")
     rules = _read_json(sources.rules_baseline, "rules baseline")
     try:
+        heldout = _heldout(held_score)
         cutoff = score["late_cutoff"]
         model = score["model"]["model"]
         splits = {name: _split(score, name) for name in ("early", "all")}
@@ -418,12 +494,27 @@ def build_results(sources: Sources) -> dict[str, Any]:
             "true_strict": alerts["true_strict"],
             "false_strict": alerts["false_strict"],
         }
+        reviewer_off = held_score["splits"]["all"].get("review", {}).get("reviewed") == 0
         notes = [
             "Truth is strict: an alert counts as a true positive only when at least half of its "
             "transfers are laundering.",
             "Cases routed to analyst review count as escalated, because an analyst works them.",
-            "These are development alerts only. The prompts were tuned on them.",
-            "There is no run on the held-out alerts yet, so these numbers may be optimistic.",
+            "The held-out alerts were never used to tune the prompts. The development alerts "
+            "were, so the development numbers may be optimistic.",
+            f"The two runs used different prompt versions ({heldout['prompt_version']} on the "
+            f"held-out alerts, {score['prompt']['version']} on the development alerts), so they "
+            "are not a like-for-like comparison.",
+            "The numbers are small: the early held-out set has "
+            f"{heldout['splits']['early']['counts']['real_total']} true positives, so one case "
+            "moves the result a lot.",
+            *(
+                [
+                    "The reviewer agent was off for the held-out run, so no second agent "
+                    "checked its recommendations."
+                ]
+                if reviewer_off
+                else []
+            ),
             f"The model is a free model ({model}), so the cost per case was $0.",
             f"In this synthetic dataset most transfers after {cutoff} are laundering, so late "
             "alerts are easy to call. The headline uses only alerts that end on or before "
@@ -440,9 +531,13 @@ def build_results(sources: Sources) -> dict[str, Any]:
             "human_review": human_review,
             "rules_171": rules_171,
             "notes": notes,
+            "heldout": heldout,
+            "headline_source": "heldout",
         }
     except (KeyError, TypeError):
-        raise ExportError("score file or rules baseline is missing an expected field") from None
+        raise ExportError(
+            "a score file or the rules baseline is missing an expected field"
+        ) from None
 
 
 # ------------------------------------------------------------------ the bundle
@@ -477,8 +572,7 @@ def build_bundle(
     facts = read_run_facts(engine, ids)
     rulesets = {rid: check_run(facts.get(rid), rid, dev, held) for rid in ids}
 
-    page = _call(ids[0], list_showcase, engine, MAX_SHOWCASE)
-    by_id: dict[str, ShowcaseItem] = {i.run_id: i for i in page.items if i.run_id in rulesets}
+    by_id = showcase_items(engine, ids)
     missing = [rid for rid in ids if rid not in by_id]
     if missing:
         raise ExportError(f"runs without stored steps: {', '.join(missing)}")

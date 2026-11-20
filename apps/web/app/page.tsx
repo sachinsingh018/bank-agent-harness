@@ -6,7 +6,7 @@ import type { RunSteps } from "../lib/api";
 import { getManifest, getResults, getRunSteps, getShowcase } from "../lib/data";
 import { pageMeta, SITE_DESCRIPTION } from "../lib/meta";
 import { patternLabel, pickFeatured } from "../lib/replay";
-import { splitView } from "../lib/results-view";
+import { headlineHeldout, splitView } from "../lib/results-view";
 import { Contact } from "./_ui/contact";
 import { CountBar } from "./_ui/count-bar";
 import { ApproveIcon, CheckIcon, FlagIcon, GitHubIcon, LensIcon } from "./_ui/icons";
@@ -179,8 +179,11 @@ export default async function Home() {
     title: s.title,
     explanation: s.explanation,
   }));
-  const early = splitView(results?.splits?.early)?.agent ?? null;
-  const freeModel = results?.model?.endsWith(":free") ?? false;
+  const held = headlineHeldout(results);
+  const heldEarly = splitView(held?.splits?.early);
+  const early = heldEarly?.agent ?? null;
+  const freeModel = held?.model?.endsWith(":free") ?? false;
+  const prompt = held?.prompt_version ?? null;
 
   return (
     <div className={styles.page}>
@@ -234,8 +237,8 @@ export default async function Home() {
       {early && (
         <section className={styles.proof} aria-labelledby="headline-title">
           <h2 id="headline-title" className={styles.proofTitle}>
-            Of the {early.falseTotal + early.realTotal} early development alerts, the agent
-            would recommend closing:
+            Of {heldEarly?.n ?? early.falseTotal + early.realTotal} alerts the agent had never
+            seen (early held-out set), it would recommend closing:
           </h2>
           <div className={styles.pair}>
             <div className={styles.count}>
@@ -264,7 +267,8 @@ export default async function Home() {
           </p>
           <p className={styles.why}>That is why an analyst approves every close.</p>
           <p className="meta">
-            Early alerts only, strict truth{freeModel ? ", free model" : ""}.{" "}
+            Held-out alerts, strict truth{freeModel ? ", free model" : ""}
+            {prompt ? `, prompt ${prompt}` : ""}.{" "}
             <Link href="/results">How these numbers were measured</Link>
           </p>
         </section>

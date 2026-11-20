@@ -22,11 +22,34 @@ export interface SplitCounts {
   real_total: number;
 }
 
-/** The early split counts from the committed results.json. */
-export function earlyCounts(): SplitCounts {
-  const file = path.join(process.cwd(), "content", "showcase", "v1", "results.json");
-  const results = JSON.parse(readFileSync(file, "utf8")) as {
-    splits: { early: { counts: SplitCounts } };
+interface ResultsFile {
+  prompt_version: string;
+  splits: { early: { counts: SplitCounts } };
+  heldout: {
+    eval_run_id: string;
+    prompt_version: string;
+    splits: { early: { n: number; counts: SplitCounts }; all: { n: number } };
+    human_review: { count: number };
+    grounding: { claims: number; grounded: number };
   };
-  return results.splits.early.counts;
+}
+
+function readResults(): ResultsFile {
+  const file = path.join(process.cwd(), "content", "showcase", "v1", "results.json");
+  return JSON.parse(readFileSync(file, "utf8")) as ResultsFile;
+}
+
+/** The development early split counts from the committed results.json. */
+export function earlyCounts(): SplitCounts {
+  return readResults().splits.early.counts;
+}
+
+/** The held-out block from the committed results.json. */
+export function heldout(): ResultsFile["heldout"] {
+  return readResults().heldout;
+}
+
+/** The development prompt version from the committed results.json. */
+export function devPromptVersion(): string {
+  return readResults().prompt_version;
 }
