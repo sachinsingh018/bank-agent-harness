@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { earlyCounts, firstRunId } from "./bundle";
+import { devPromptVersion, earlyCounts, firstRunId, heldout } from "./bundle";
 
 const REPO = "https://github.com/sachinsingh018/bank-agent-harness";
 
@@ -59,12 +59,22 @@ test("landing definitions open on tap and close on Escape", async ({ page }) => 
 });
 
 test("landing shows the false positives closed next to the true positives closed", async ({ page }) => {
-  const early = earlyCounts();
+  const held = heldout();
+  const early = held.splits.early.counts;
   await page.goto("/");
-  const headline = page.getByRole("region", { name: /early development alerts/ });
+  const headline = page.getByRole("region", {
+    name: `Of ${held.splits.early.n} alerts the agent had never seen (early held-out set), it would recommend closing:`,
+  });
   await expect(headline).toContainText(`${early.false_closed} of ${early.false_total} false positives`);
   await expect(headline).toContainText(`${early.real_closed} of ${early.real_total} true positives`);
   await expect(headline).toContainText("That is why an analyst approves every close.");
+  await expect(headline).toContainText(
+    `Held-out alerts, strict truth, free model, prompt ${held.prompt_version}.`,
+  );
+  await expect(headline.getByRole("link", { name: "How these numbers were measured" })).toHaveAttribute(
+    "href",
+    "/results",
+  );
 });
 
 test("landing preview can be paused", async ({ page }) => {
@@ -106,11 +116,40 @@ test("results renders", async ({ page }) => {
   const early = earlyCounts();
   await page.goto("/results");
   await expect(page.getByRole("heading", { level: 1, name: "Performance" })).toBeVisible();
-  await expect(page.getByRole("table").first()).toContainText(
+  const dev = page.getByRole("region", { name: /^Development alerts:/ });
+  await expect(dev.getByRole("table").first()).toContainText(
     `${early.real_closed} of ${early.real_total}`,
   );
   await expect(page.getByRole("heading", { name: /Context: the rules on all/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "CDLA Sharing 1.0" })).toBeVisible();
+});
+
+test("results leads with the held-out section and its caveats", async ({ page }) => {
+  const held = heldout();
+  const early = held.splits.early.counts;
+  await page.goto("/results");
+  const section = page.getByRole("region", { name: /early held-out alerts the agent had never seen/ });
+  await expect(section.getByRole("heading", { level: 2 })).toHaveText(
+    `The headline: ${held.splits.early.n} early held-out alerts the agent had never seen`,
+  );
+  await expect(page.getByRole("heading", { level: 2 }).first()).toHaveText(/held-out/);
+  await expect(section.getByRole("table").first()).toContainText(
+    `${early.false_closed} of ${early.false_total}`,
+  );
+  await expect(section.getByRole("table").first()).toContainText(
+    `${early.real_closed} of ${early.real_total}`,
+  );
+  await expect(section).toContainText(`All ${held.splits.all.n} held-out alerts`);
+  await expect(section).toContainText(`routed ${held.human_review.count} of the ${held.splits.all.n}`);
+  await expect(section).toContainText(
+    `Of the ${held.grounding.claims} claims the agent made on the held-out alerts, ${held.grounding.grounded} passed`,
+  );
+  await expect(section).toContainText(`Eval run ${held.eval_run_id}, prompt ${held.prompt_version}.`);
+  await expect(page.getByRole("note")).toContainText(
+    `The held-out run used prompt ${held.prompt_version} and the development run used prompt ${devPromptVersion()}.`,
+  );
+  await expect(page.getByRole("note")).toContainText("not a head-to-head comparison");
+  await expect(page.locator("body")).not.toContainText(/no run on the held-out|no held-out run/i);
 });
 
 test("about renders", async ({ page }) => {

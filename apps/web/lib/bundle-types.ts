@@ -103,7 +103,28 @@ export interface ResultsSplit {
   agent_with_human_review?: { strict?: Record<string, unknown> | null } | null;
 }
 
-/** results.json: counts from one scored eval run. */
+/** Claims the agent made and how many the citation checks grounded in stored data. */
+export interface Grounding {
+  claims?: number;
+  grounded?: number;
+  rate?: number;
+}
+
+/** The held-out eval run: alerts never used to tune the prompts. Same shape as the
+ *  development block, plus grounding. Only aggregate counts; no held-out replays. */
+export interface HeldoutResults {
+  eval_run_id?: string | null;
+  dataset?: string | null;
+  model?: string | null;
+  prompt_version?: string | null;
+  late_cutoff?: string | null;
+  headline?: unknown;
+  splits?: { early?: ResultsSplit | null; all?: ResultsSplit | null } | null;
+  human_review?: unknown;
+  grounding?: Grounding | null;
+}
+
+/** results.json: the development eval run at the top level, the held-out run under heldout. */
 export interface Results {
   eval_run_id?: string | null;
   dataset?: string | null;
@@ -115,4 +136,7 @@ export interface Results {
   human_review?: unknown;
   rules_171?: unknown;
   notes?: string[] | null;
+  heldout?: HeldoutResults | null;
+  /** Which block the landing headline uses: "heldout" when the held-out run is present. */
+  headline_source?: string | null;
 }
